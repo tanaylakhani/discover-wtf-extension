@@ -8,9 +8,12 @@ export default defineContentScript({
   cssInjectionMode: "ui",
 
   async main(ctx) {
-    // if (!window.location.search.includes("discover_extension_tab=1")) {
-    //   return;
-    // }
+    const extensionTabId = await browser.storage.local.get("extensionTabId");
+    const res = await browser.runtime.sendMessage({
+      type: "GET_CURRENT_TAB_ID",
+    });
+    console.log({ res, extensionTabId });
+    if (res?.tabId !== extensionTabId?.extensionTabId) return;
 
     console.log("Attempting to load user and token...");
 

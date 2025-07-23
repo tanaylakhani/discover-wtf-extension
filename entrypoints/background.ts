@@ -52,14 +52,17 @@ export default defineBackground(() => {
   });
 
   // Handle messages from content scripts
+
   browser.runtime.onMessage.addListener(
     async (message, sender, sendResponse) => {
-      if (message.type === "CHECK_IF_EXTENSION_TAB") {
-        const data = await browser.storage.local.get("extensionTabId");
-        const isExtensionTab = sender.tab?.id === data.extensionTabId;
-        sendResponse({ isExtensionTab });
-        return true;
-      } else if (message.type === "AUTHENTICATE_USER") {
+      // if (message.type === "CHECK_IF_EXTENSION_TAB") {
+      //   const data = await browser.storage.local.get("extensionTabId");
+      //   const isExtensionTab = sender.tab?.id === data.extensionTabId;
+      //   console.log({ isExtensionTab });
+
+      //   return { isExtensionTab };
+      // } else
+      if (message.type === "AUTHENTICATE_USER") {
         authenticateUser().then((token) => {
           sendResponse({ token });
         });
@@ -72,6 +75,10 @@ export default defineBackground(() => {
           windowId: sender?.tab?.windowId,
         });
         return true; // Indicates async response
+      } else if (message.type === "GET_CURRENT_TAB_ID") {
+        console.log({ sender });
+        sendResponse({ tabId: sender.tab?.id });
+        return true;
       }
     }
   );

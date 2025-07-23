@@ -136,8 +136,8 @@ function App() {
               {history.length > 0 && (
                 <div className="space-y-4  mb-6 mt-4">
                   {(Array.from(new Set(history)) as THistory[])
-                    .slice(0, 20)
                     .reverse()
+                    .slice(0, 20)
                     .map((entry, index) => {
                       // const images = entry["og:image"]
                       //   ? entry["og:image"].split(",")
