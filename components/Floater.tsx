@@ -1,34 +1,32 @@
+import "@/entrypoints/style.css";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useState } from "react";
-import "@/entrypoints/style.css";
+import TextareaAutosize from "react-textarea-autosize";
 import {
   cleanUrl,
   getAuthToken,
   getGoogleUser,
   TGoogleUser,
 } from "../lib/utils";
-import TextareaAutosize from "react-textarea-autosize";
 
+import { GalleryVerticalEnd, LogOut } from "lucide-react";
+import Sparkle from "./icons/ai";
 import Bookmark from "./icons/bookmark";
 import Comment from "./icons/comment";
 import Heart from "./icons/heart";
-import Sparkle from "./icons/ai";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "./ui/tooltip";
+import { Button } from "./ui/button";
 
 const History: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<
+    { url: string; timestamp: number; title: string }[]
+  >([]);
   useEffect(() => {
-    browser.storage.local.get("history", (data) => {
-      setHistory(data.history || []);
+    browser.storage.local.get("extensionTabHistory", (data) => {
+      setHistory(data.extensionTabHistory || []);
     });
     const listener = (changes: any, namespace: string) => {
-      if (changes.history) {
-        setHistory(changes.history.newValue || []);
+      if (changes.extensionTabHistory) {
+        setHistory(changes.extensionTabHistory.newValue || []);
       }
     };
     browser.storage.onChanged.addListener(listener);
@@ -65,9 +63,9 @@ const History: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           >
             <path
               d="M17 7L7 17M7 7L17 17"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
         </button>
@@ -79,15 +77,15 @@ const History: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           history
             .slice()
             .reverse()
-            .map((url, idx) => (
+            .map((entry, idx) => (
               <li key={idx} className="mb-1 break-all">
                 <a
-                  href={url}
+                  href={entry.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-600 underline"
                 >
-                  {cleanUrl(url)}
+                  {cleanUrl(entry.url)}
                 </a>
               </li>
             ))
@@ -164,9 +162,9 @@ const ChatBox: React.FC<{ user: TGoogleUser | null }> = ({ user }) => {
                 <path
                   d="M12 20V4M12 4L6 10M12 4L18 10"
                   stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
               </svg>
             </button>
@@ -241,14 +239,14 @@ const Floater: React.FC<FloaterProps> = ({ setToken }) => {
         setPosition(data.floaterPosition);
       }
     });
-    browser?.storage.local.get("tabCount", (data) => {
-      setCount(data.tabCount || 0);
+    browser?.storage.local.get("urlVisitCount", (data) => {
+      setCount(data.urlVisitCount || 0);
     });
 
     // Optional: listen to changes in real-time
     browser?.storage.onChanged.addListener((changes, namespace) => {
-      if (changes.tabCount) {
-        setCount(changes.tabCount.newValue);
+      if (changes.urlVisitCount) {
+        setCount(changes.urlVisitCount.newValue);
       }
     });
   }, []);
@@ -272,34 +270,19 @@ const Floater: React.FC<FloaterProps> = ({ setToken }) => {
         show={showSidebar}
         onClose={() => setShowSidebar(false)}
       /> */}
-      <div
-        style={{ zIndex: 99999 }}
+      {/* <div
+        style={{ zIndex: 2147483647 }}
         className={
           "bg-black  fixed top-10 right-4 h-14 px-6 rounded-full text-white flex items-center justify-center"
         }
       >
         <span className="text-neutral-200 font-medium">Discover Count. </span>
-        <span className="font-semibold ml-2 tracking-tight ">{count ?? 0}</span>
+        <span className="font-semibold ml-2 tracking-tight ">{count}</span>
         <button
           className="ml-4 p-3 stroke-white"
           onClick={() => setShowHistory((v) => !v)}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width={1.8}
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            className="lucide lucide-gallery-vertical-end-icon lucide-gallery-vertical-end"
-          >
-            <path d="M7 2h10" />
-            <path d="M5 6h14" />
-            <rect width="18" height="12" x="3" y="10" rx="2" />
-          </svg>
+          <GalleryVerticalEnd />
         </button>
         <button
           className="ml-4 px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
@@ -316,30 +299,46 @@ const Floater: React.FC<FloaterProps> = ({ setToken }) => {
       </div>
       <AnimatePresence>
         {showHistory && <History onClose={() => setShowHistory(false)} />}
-      </AnimatePresence>
+      </AnimatePresence> */}
 
       <motion.div
-        drag="y"
-        dragMomentum={false}
-        dragElastic={0.2}
-        onDragEnd={handleDragEnd}
-        initial={false}
         style={{
-          zIndex: 2147483640,
+          zIndex: 2147483647,
         }}
-        className="fixed bottom-20  shadow-black/20 drop-shadow-2xl rounded-lg top-1/3 h-fit px-2 py-2.5 right-2 bg-neutral-100 flex flex-col items-center  justify-center gap-y-4 border border-neutral-200  transition-all duration-200 cursor-pointer"
+        className="fixed bottom-20 right-2  top-1/3 "
       >
-        {options.map((option, index) => (
-          <button
-            onClick={async () => {
-              await handleSidePanelOpen();
-            }}
-            className="  relative"
-          >
-            <option.icon className="size-5 stroke-none fill-neutral-700" />
-          </button>
-        ))}
-
+        {" "}
+        <Button
+          title="Logout"
+          className="bg-neutral-50 border border-neutral-200  mb-2 size-10 font-medium flex items-center justify-center rounded-full text-neutral-900"
+          onClick={async () => {
+            if (user) {
+              await browser.storage.local.remove("authToken");
+              setToken(null);
+            }
+          }}
+        >
+          <LogOut className="size-4 " />
+        </Button>
+        <Button
+          title="Discover Count"
+          className="bg-neutral-50 border border-neutral-200  mb-4 size-10 font-medium flex items-center justify-center rounded-full text-neutral-900"
+        >
+          {count}
+        </Button>
+        <motion.div className="h-fit px-2 py-2.5 shadow-black/10 drop-shadow-md rounded-lg  bg-neutral-100 flex flex-col items-center  justify-center gap-y-4 border border-neutral-200  transition-all duration-200 cursor-pointer">
+          {options.map((option, index) => (
+            <button
+              key={index}
+              onClick={async () => {
+                await handleSidePanelOpen();
+              }}
+              className="  relative"
+            >
+              <option.icon className="size-5 stroke-none fill-neutral-700" />
+            </button>
+          ))}
+        </motion.div>
         {/* <button
           className="size-5 "
           onClick={() => setShowSidebar((prev) => !prev)}
@@ -355,9 +354,9 @@ const Floater: React.FC<FloaterProps> = ({ setToken }) => {
             <path
               d="M15 3V21M7.8 3H16.2C17.8802 3 18.7202 3 19.362 3.32698C19.9265 3.6146 20.3854 4.07354 20.673 4.63803C21 5.27976 21 6.11984 21 7.8V16.2C21 17.8802 21 18.7202 20.673 19.362C20.3854 19.9265 19.9265 20.3854 19.362 20.673C18.7202 21 17.8802 21 16.2 21H7.8C6.11984 21 5.27976 21 4.63803 20.673C4.07354 20.3854 3.6146 19.9265 3.32698 19.362C3 18.7202 3 17.8802 3 16.2V7.8C3 6.11984 3 5.27976 3.32698 4.63803C3.6146 4.07354 4.07354 3.6146 4.63803 3.32698C5.27976 3 6.11984 3 7.8 3Z"
               stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
         </button> */}

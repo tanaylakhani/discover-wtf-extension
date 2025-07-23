@@ -8,14 +8,6 @@ export default defineConfig({
 
     page_action: {},
 
-    content_scripts: [
-      {
-        matches: ["<all_urls>"],
-        js: ["entrypoints/content/popup.content.tsx"],
-        run_at: "document_idle",
-      },
-    ],
-
     permissions: [
       "scripting",
       "identity",

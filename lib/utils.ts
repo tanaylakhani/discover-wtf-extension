@@ -164,3 +164,12 @@ export const getAuthUrl = () => {
     `&scope=${encodeURIComponent(scopes.join(" "))}`;
   return authUrl;
 };
+
+export function hasDiscoverHistoryParam(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.searchParams.has("discover_history");
+  } catch {
+    return false;
+  }
+}
