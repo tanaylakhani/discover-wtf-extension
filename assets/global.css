@@ -67,27 +67,17 @@
   }
 }
 
+* {
+  border-color: hsl(var(--border));
+}
+
 .inter-sans {
   font-family: "Inter", sans-serif;
-  font-optical-sizing: auto;
-  font-weight: 400;
-  font-style: normal;
-}
-
-#floater-wrapper {
-  all: initial;
-  font-size: 16px;
-  transform: none !important;
-  zoom: 1 !important;
-  scale: 1 !important;
-  position: relative;
-  box-sizing: border-box;
-  @apply inter-sans;
 }
 #root {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
   @apply inter-sans;
 }
 
-.sidepanel-heading {
-  @apply text-2xl font-bold mb-4;
-}
+/* Inter font class */

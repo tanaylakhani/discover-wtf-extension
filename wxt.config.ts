@@ -9,6 +9,11 @@ export default defineConfig({
     page_action: {},
 
     permissions: [
+      "bookmarks",
+      "history",
+      "cookies",
+      "webRequest",
+      "notifications",
       "scripting",
       "identity",
       "tabs",
@@ -16,11 +21,11 @@ export default defineConfig({
       "contextMenus",
       "sidePanel",
     ],
-    oauth2: {
-      client_id:
-        "749325556750-7vhqt1hskpg7k2229vqiakc7nbgfbv8t.apps.googleusercontent.com",
-      scopes: ["email", "profile"],
-    },
+    // oauth2: {
+    //   client_id:
+    //     "749325556750-7vhqt1hskpg7k2229vqiakc7nbgfbv8t.apps.googleusercontent.com",
+    //   scopes: ["email", "profile"],
+    // },
     icons: {
       "16": "/animate/globe1.png",
       "32": "/animate/globe1.png",

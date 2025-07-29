@@ -1,172 +1,383 @@
 import { links } from "@/lib/data";
 import {
   animateGlobeIcon,
-  authenticateUser,
+  fetchInitialLinks,
+  getGqlToken,
   getRandomUrl,
   hasDiscoverHistoryParam,
   isValidUrl,
+  makeCall,
 } from "../lib/utils";
+import { QUERY_USER_STRING } from "@/lib/graphql/user";
 
 // Global variables to store the extension tab ID and window ID
 let extensionTabId: number | null = null;
 let extensionWindowId: number | null = null;
 
-export default defineBackground(() => {
-  browser.action.onClicked.addListener(async (tab) => {
-    await animateGlobeIcon(tab?.id as number);
+// const response = await fetch("https://api.betterstacks.com/graphql", {
+//   method: "POST",
+//   headers: {
+//     Accept: "application/json",
+//     "Content-Type": "application/json",
+//     "X-Authorization": gqlToken,
+//     Authorization: `Bearer ${gqlToken}`,
+//   },
+//   body: JSON.stringify({
+//     query: RECALL_LINKS_QUERY_STRING(3, 1, 50),
+//   }),
+// });
+// browser.runtime.onInstalled.addListener((details) => {
+//   console.log("Extension installed:", details);
 
-    const url = getRandomUrl(links);
+// });
+export default defineBackground(async () => {
+  (async () => {
+    const { gqlToken } = await browser.storage.local.get("gqlToken");
+    await browser.action.setPopup({
+      popup: gqlToken ? "" : browser.runtime.getURL("/authPopup.html"),
+    });
+  })();
+  initializeContextMenus();
 
-    // Check if extensionTabId exists in storage
-    const data = await browser.storage.local.get("extensionTabId");
-    const storedTabId = data.extensionTabId;
+  browser.runtime.onStartup.addListener(async () => {
+    console.log("Starup called 🌱💌🌊");
+    const { gqlToken } = await browser.storage.local.get("gqlToken");
+    await browser.action.setPopup({
+      popup: gqlToken ? "" : browser.runtime.getURL("/authPopup.html"),
+    });
 
-    if (storedTabId !== undefined) {
-      try {
-        // Update existing tab
-        await browser.tabs.update(storedTabId, { url, active: true });
-        const updatedTab = await browser.tabs.get(storedTabId);
-        await browser.windows.update(updatedTab.windowId, { focused: true });
+    // const resp = await makeCall("/recall");
+    // console.log({ resp });
+  });
 
-        // Update global variables
-        extensionTabId = storedTabId;
-        extensionWindowId = updatedTab.windowId;
+  browser.storage.onChanged.addListener(async (changes, areaName) => {
+    if (areaName === "local" && changes.gqlToken) {
+      console.log("🚨 Changes Detected");
+      const newToken = changes.gqlToken.newValue;
+      await browser.action.setPopup({
+        popup: newToken ? "" : browser.runtime.getURL("/authPopup.html"),
+      });
+    }
+  });
+  browser.action.onClicked.addListener(handleActionClick);
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    handleMessage(message, sender, sendResponse);
+    return true;
+  });
+  browser.tabs.onRemoved.addListener(handleTabRemoval);
+  browser.tabs.onUpdated.addListener(handleTabUpdate);
+});
 
-        return;
-      } catch (e) {
-        console.log("Error updating existing tab:", e);
-        // If update fails, we'll create a new tab below
-      }
+async function initializeContextMenus() {
+  try {
+    // Remove all existing context menus
+    browser.contextMenus.removeAll();
+
+    const tokenData = await browser.storage.local.get(["gqlToken"]);
+    const isLoggedIn = !!tokenData.gqlToken;
+
+    if (isLoggedIn) {
+      browser.contextMenus.create({
+        id: "discover_separator",
+        type: "separator",
+        contexts: ["action"],
+      });
+      // Add logout option (only if logged in)
+      browser.contextMenus.create({
+        id: "discover_logout",
+        title: "Logout",
+        contexts: ["action"],
+      });
+    } else {
+      browser.contextMenus.create({
+        id: "discover_login",
+        title: "Login with Stacks",
+        contexts: ["action"],
+      });
     }
 
-    // Create new tab
+    browser.contextMenus.onClicked.addListener(handleContextMenuClick);
+    console.log("✅ Context menus initialized");
+  } catch (error) {
+    console.error("❌ Error initializing context menus:", error);
+  }
+}
+
+// Handle context menu clicks
+function handleContextMenuClick(
+  info: Browser.contextMenus.OnClickData,
+  tab?: Browser.tabs.Tab
+) {
+  // console.log('🖱️ Context menu clicked:', info.menuItemId);
+
+  try {
+    switch (info.menuItemId) {
+      case "discover_login":
+        handleLoginClick();
+        break;
+      case "discover_logout":
+        handleLogoutClick();
+        break;
+      default:
+    }
+  } catch (error) {
+    console.error("❌ Error handling context menu click:", error);
+  }
+}
+
+function handleLoginClick() {
+  browser.tabs.create({
+    url: browser.runtime.getURL("/login.html"),
+    active: true,
+  });
+}
+
+async function handleLogoutClick() {
+  try {
+    // console.log('🔓 Starting logout process...');
+
+    const authKeys = [
+      "googleToken",
+      "gqlToken",
+      "rememberYourChoice",
+      "installed",
+    ];
+
+    await browser.storage.local.remove(authKeys);
+    initializeContextMenus();
+
+    // Show notification to user
+    browser.notifications.create({
+      type: "basic",
+      iconUrl: browser.runtime.getURL("/icon/48.png"),
+      title: "Discover Extension",
+      message: "Successfully logged out of Stacks",
+    });
+  } catch (error) {
+    console.error("❌ Error during logout:", error);
+
+    browser.notifications.create({
+      type: "basic",
+      iconUrl: browser.runtime.getURL("/icon/48.png"),
+      title: "Stacks Extension - Error",
+      message: "Failed to logout. Please try again.",
+    });
+  }
+}
+
+// Handle extension icon click
+async function handleActionClick(tab: any) {
+  await fetchInitialLinks();
+  const [url] = await Promise.all([
+    getRandomUrl(),
+    animateGlobeIcon(tab?.id as number),
+  ]);
+
+  handleTab(url);
+}
+
+// Handle runtime messages
+async function handleMessage(
+  message: any,
+  sender: Browser.runtime.MessageSender,
+  sendResponse: (response?: any) => void
+) {
+  switch (message.type) {
+    case "OPEN_SIDE_PANEL":
+      handleOpenSidePanel(sender, sendResponse);
+      break;
+    case "DISABLE_POPUP":
+      handleDisablePopup(sender, sendResponse);
+      break;
+    case "ENABLE_POPUP":
+      handleEnablePopup(sender, sendResponse);
+      break;
+    case "GET_CURRENT_TAB_ID":
+      sendResponse({ tabId: sender.tab?.id });
+      break;
+    case "SET_GQL_TOKEN":
+      handleSetGQLToken(message, sendResponse);
+      break;
+  }
+}
+
+async function handleTab(url: string) {
+  try {
+    const data = await browser.storage.local.get("extensionTabId");
+    // Update already existing tab opened previously by extension
+    if (data?.extensionTabId !== undefined) {
+      await browser.tabs.update(data?.extensionTabId, { url, active: true });
+      const updatedTab = await browser.tabs.get(data?.extensionTabId);
+      await browser.windows.update(updatedTab.windowId, { focused: true });
+      extensionTabId = data?.extensionTabId;
+      extensionWindowId = updatedTab.windowId;
+      return;
+    }
+    //  Create New Tab if not tab was created by extension earlier
     const createdTab = await browser.tabs.create({
       active: true,
       url,
     });
 
-    // Store tab ID in storage and global variables
     await browser.storage.local.set({ extensionTabId: createdTab.id });
     extensionTabId = createdTab.id || null;
     extensionWindowId = createdTab.windowId || null;
-  });
+  } catch (e) {
+    console.log("Error updating existing tab:", e);
+  }
+}
 
-  // Handle messages from content scripts
+// Handle tab removal
+async function handleTabRemoval(tabId: number, removeInfo: any) {
+  const data = await browser.storage.local.get([
+    "extensionTabId",
+    "urlVisitCount",
+  ]);
 
-  browser.runtime.onMessage.addListener(
-    async (message, sender, sendResponse) => {
-      // if (message.type === "CHECK_IF_EXTENSION_TAB") {
-      //   const data = await browser.storage.local.get("extensionTabId");
-      //   const isExtensionTab = sender.tab?.id === data.extensionTabId;
-      //   console.log({ isExtensionTab });
+  if (data.extensionTabId === tabId) {
+    await browser.storage.local.remove("extensionTabId");
+    // await browser.storage.local.set({ urlVisitCount: 0 });
+    extensionTabId = null;
+    extensionWindowId = null;
+    console.log("Extension tab closed, cleared tracking");
+  }
+}
 
-      //   return { isExtensionTab };
-      // } else
-      if (message.type === "AUTHENTICATE_USER") {
-        authenticateUser().then((token) => {
-          sendResponse({ token });
-        });
-
-        return true; // Indicates async response
-      } else if (message.type === "OPEN_SIDE_PANEL") {
-        console.log("opensidebar");
-        browser.sidePanel.open({
-          tabId: sender?.tab?.id as number,
-          windowId: sender?.tab?.windowId,
-        });
-        return true; // Indicates async response
-      } else if (message.type === "GET_CURRENT_TAB_ID") {
-        console.log({ sender });
-        sendResponse({ tabId: sender.tab?.id });
-        return true;
-      }
-    }
-  );
-
-  // Initialize side panel behavior on install
-  // browser.runtime.onInstalled.addListener(async () => {
-  //   // Initialize storage
-  //   await browser.storage.local.set({
-  //     // urlVisitCount: 0,
-  //     // extensionTabHistory: [], // Track URLs visited by extension tab specifically
-  //   });
-  // });
-
-  // Handle tab removal to clean up extension tab tracking
-  browser.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+// Handle tab updates
+async function handleTabUpdate(
+  tabId: number,
+  changeInfo: Browser.tabs.TabChangeInfo,
+  tab: Browser.tabs.Tab
+) {
+  if (
+    changeInfo.url &&
+    isValidUrl(changeInfo.url) &&
+    !hasDiscoverHistoryParam(changeInfo?.url)
+  ) {
     const data = await browser.storage.local.get([
       "extensionTabId",
-      "urlVisitCount",
+      "extensionTabHistory",
     ]);
+
     if (data.extensionTabId === tabId) {
-      await browser.storage.local.remove("extensionTabId");
-      await browser.storage.local.set({ urlVisitCount: 0 });
-      extensionTabId = null;
-      extensionWindowId = null;
-      console.log("Extension tab closed, cleared tracking");
+      // await updateExtensionTabHistory(changeInfo.url, tab);
     }
-  });
+  }
+}
 
-  // Track URL changes for extension tabs only
-  browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    console.log("Tab updated:", { tabId, changeInfo, tab });
-    // if (changeInfo.status === "complete") {
+// Update extension tab history
+// async function updateExtensionTabHistory(url: string, tab: any) {
+//   const data = await browser.storage.local.get("extensionTabHistory");
+//   let extensionTabHistory = data.extensionTabHistory || [];
 
-    if (
-      changeInfo.url &&
-      isValidUrl(changeInfo.url) &&
-      !hasDiscoverHistoryParam(changeInfo?.url)
-    ) {
-      const data = await browser.storage.local.get([
-        "extensionTabId",
-        "extensionTabHistory",
-      ]);
+//   const historyEntry = {
+//     url: url,
+//     timestamp: Date.now(),
+//     title: tab.title || "",
+//   };
 
-      // Only track history for extension tab
-      if (data.extensionTabId === tabId) {
-        // Track extension tab specific history with additional metadata
-        let extensionTabHistory = data.extensionTabHistory || [];
-        const historyEntry = {
-          url: changeInfo.url,
-          timestamp: Date.now(),
-          title: tab.title || "",
-        };
+//   if (
+//     extensionTabHistory.length === 0 ||
+//     extensionTabHistory[extensionTabHistory.length - 1].url !== url
+//   ) {
+//     extensionTabHistory.push(historyEntry);
 
-        // Avoid consecutive duplicates for extension tab history
-        if (
-          extensionTabHistory.length === 0 ||
-          extensionTabHistory[extensionTabHistory.length - 1].url !==
-            changeInfo.url
-        ) {
-          extensionTabHistory.push(historyEntry);
-          // Limit extension tab history to last 100 URLs
-          if (extensionTabHistory.length > 100) {
-            extensionTabHistory = extensionTabHistory.slice(
-              extensionTabHistory.length - 100
-            );
-          }
+//     if (extensionTabHistory.length > 100) {
+//       extensionTabHistory = extensionTabHistory.slice(
+//         extensionTabHistory.length - 100
+//       );
+//     }
 
-          // Update URL visit count
-          const currentCount = await browser.storage.local.get("urlVisitCount");
-          const newCount = (currentCount.urlVisitCount || 0) + 1;
+//     const currentCount = await browser.storage.local.get("urlVisitCount");
+//     const newCount = (currentCount.urlVisitCount || 0) + 1;
 
-          await browser.storage.local.set({
-            extensionTabHistory,
-            urlVisitCount: newCount,
-          });
+//     await browser.storage.local.set({
+//       extensionTabHistory,
+//       urlVisitCount: newCount,
+//     });
 
-          // Update global variables with current tab info
-          extensionTabId = tabId;
-          extensionWindowId = tab.windowId || null;
+//     extensionTabId = tab.id || null;
+//     extensionWindowId = tab.windowId || null;
 
-          console.log(`Extension tab visited: ${changeInfo.url}`);
-          console.log(
-            `Extension tab history length: ${extensionTabHistory.length}`
-          );
-          console.log(`Total URLs visited: ${newCount}`);
-        }
-      }
-    }
-    // }
-  });
-});
+//     console.log(`Extension tab visited: ${url}`);
+//     console.log(`Extension tab history length: ${extensionTabHistory.length}`);
+//     console.log(`Total URLs visited: ${newCount}`);
+//   }
+// }
+
+const handleOpenSidePanel = (
+  sender: Browser.runtime.MessageSender,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("opensidebar", extensionTabId);
+
+    browser.sidePanel.open({
+      tabId: sender?.tab?.id as number,
+      windowId: sender?.tab?.windowId,
+    });
+    sendResponse({
+      success: true,
+    });
+  } catch (error) {
+    sendResponse({
+      success: false,
+    });
+  }
+};
+
+const handleDisablePopup = async (
+  sender: Browser.runtime.MessageSender,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("Disabling popup");
+    await browser.action.setPopup({ popup: "" });
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({
+      success: false,
+    });
+  }
+};
+
+const handleEnablePopup = async (
+  sender: Browser.runtime.MessageSender,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("🌱 Enabling Auth Popup");
+    await browser.action.setPopup({
+      popup: browser.runtime.getURL("/authPopup.html"),
+    });
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({
+      success: false,
+    });
+  }
+};
+
+const handleSetGQLToken = async (
+  message: any,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("Setting GQL Token", message.value);
+    const storageData = {
+      googleToken: message?.value,
+      gqlToken: message?.value,
+      rememberYourChoice: true,
+    };
+
+    await browser.storage.local.set(storageData);
+    initializeContextMenus();
+    sendResponse({
+      success: true,
+    });
+  } catch (error) {
+    sendResponse({
+      success: false,
+    });
+  }
+};

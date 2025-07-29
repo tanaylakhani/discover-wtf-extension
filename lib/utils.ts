@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { links } from "./data";
+import { LinkItem } from "./graphql/links";
+import { link } from "fs";
 
 let urls: string[] = [...links];
 
@@ -60,32 +62,102 @@ export const openSidePanel = async () => {
   }
 };
 
-export const getRandomUrl = (urls: string[]) => {
-  const urlBase = urls[Math.floor(Math.random() * urls?.length)];
-  return urlBase;
+export const getRandomUrl = async (): Promise<string> => {
+  const {
+    links,
+    visitedLinkIds,
+    currentPage,
+  }: {
+    links: LinkItem[];
+    visitedLinkIds: string[];
+    currentPage: number;
+  } = await browser.storage.local.get([
+    "links",
+    "visitedLinkIds",
+    "currentPage",
+  ]);
+  const visited = new Set(visitedLinkIds || []);
+
+  let unvisited = links.filter((link) => !visited.has(link.id));
+
+  if (unvisited.length === 0) {
+    const newLinks = await fetchNextPage(currentPage);
+    unvisited = newLinks.filter((link) => !visited.has(link.id));
+  }
+
+  const randomLink = unvisited[Math.floor(Math.random() * unvisited?.length)];
+
+  // add in the visited Set
+  visited.add(randomLink?.id);
+
+  // mark the link as visited in storage and db
+  markAsVisited(randomLink.id, visited);
+  console.log({ unvisited, set: [...visited] });
+
+  return randomLink?.target_url;
 };
 
-export const handleExtensionOnClick = async () => {
-  const url = getRandomUrl(urls);
-  browser.storage.local.get("extensionTabId", async (data) => {
-    const existingTabId = data.extensionTabId;
-    if (existingTabId !== undefined) {
-      try {
-        await browser.tabs.update(existingTabId, { url, active: true });
-        await browser.windows.update(existingTabId?.windowId, {
-          focused: true,
-        });
-        return;
-      } catch (e) {
-        console.log("err in handleExtensionOnClick:", e);
-      }
-    }
-    const createdTab = await browser.tabs.create({
-      active: true,
-      url,
-    });
-    browser.storage.local.set({ extensionTabId: createdTab.id });
+const markAsVisited = async (linkId: string, visited: Set<string>) => {
+  const params = {
+    linkId: linkId,
+  };
+  const stringifiedParams = new URLSearchParams(params).toString();
+  await browser.storage.local.set({
+    visitedLinkIds: [...visited],
   });
+  makeCall(`/track-visit?${stringifiedParams}`).catch((error) => {
+    console.error("Failed to mark link as visited in DB:", error);
+  });
+};
+
+// if (!response?.success && response?.error) {
+//   throw new Error(`Failed to mark link as visited in DB: ${response.error}`);
+// }
+// return response?.success;
+
+export const fetchInitialLinks = async () => {
+  const { links } = await browser.storage.local.get("links");
+
+  if (!links || links.length === 0) {
+    console.log("No Links found in storage, fetching from server...");
+    try {
+      const response = await makeCall("/recall");
+      console.log({ response });
+      if (response?.recall_links) {
+        await browser.storage.local.set({
+          links: response.recall_links,
+          currentPage: 1,
+        });
+        console.log("Links fetched and stored successfully");
+      } else {
+        console.error("No links found in response");
+      }
+    } catch (error) {
+      console.error("Error fetching links:", error);
+    }
+  }
+};
+
+const fetchNextPage = async (currentPage: number) => {
+  console.log("Fetching the next batch of links for page:", currentPage);
+  const nextPage = currentPage + 1;
+  const params = {
+    currentPage: nextPage.toString(),
+  };
+  const stringifiedParams = new URLSearchParams(params).toString();
+  const response = await makeCall(`/recall?${stringifiedParams}`);
+  const newLinks = response?.recall_links as LinkItem[];
+
+  // If next page has no links then user has visited all links
+  if (!newLinks || newLinks.length === 0) {
+    throw new Error("No more links available");
+  }
+
+  await browser.storage.local.set({
+    links: newLinks, // remove the prev 20 links ana update with next batch of 20 links
+    currentPage: nextPage, // update the current page
+  });
+  return newLinks;
 };
 
 export function isValidUrl(str: string) {
@@ -128,8 +200,8 @@ export function cleanUrl(url: string): string {
   }
 }
 
-export const getAuthToken = async () => {
-  return await browser.storage.local.get("authToken");
+export const getGqlToken = async () => {
+  return await browser.storage.local.get("gqlToken");
 };
 
 export const getActiveExtensionTabId = async () => {
@@ -137,7 +209,7 @@ export const getActiveExtensionTabId = async () => {
 };
 
 export async function getGoogleUser() {
-  const token = await browser.storage.local.get("authToken");
+  const token = await browser.storage.local.get("gqlToken");
   const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
     headers: {
       Authorization: `Bearer ${token?.authToken}`,
@@ -173,3 +245,26 @@ export function hasDiscoverHistoryParam(url: string): boolean {
     return false;
   }
 }
+
+export const makeCall = async (endpoint: string, options: RequestInit = {}) => {
+  const token = await getGqlToken();
+  if (!token?.gqlToken) {
+    throw new Error("No GraphQL token found");
+  }
+  const response = await fetch(
+    `http://192.168.29.152:3000/api/links${endpoint}`,
+    {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token.gqlToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Network response was not ok");
+  }
+
+  return response.json();
+};

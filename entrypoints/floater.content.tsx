@@ -1,52 +1,49 @@
 import App from "@/components/App";
-import { getAuthToken, getGoogleUser } from "@/lib/utils";
+import { getGqlToken } from "@/lib/utils";
 import ReactDOM from "react-dom/client";
 import "./style.css";
+import { AuthProvider } from "@/lib/auth-context";
+import { ApolloClient, ApolloProvider } from "@apollo/client";
+import apolloClient from "@/lib/apollo-client";
 
 export default defineContentScript({
-  matches: ["*://*/*"],
+  matches: ["<all_urls>"],
   cssInjectionMode: "ui",
-
+  runAt: "document_idle",
   async main(ctx) {
+    console.log("Hello from floater content script!");
     const extensionTabId = await browser.storage.local.get("extensionTabId");
     const res = await browser.runtime.sendMessage({
       type: "GET_CURRENT_TAB_ID",
     });
-    console.log({ res, extensionTabId });
-    if (res?.tabId !== extensionTabId?.extensionTabId) return;
+    const token = await getGqlToken();
+    console.log({ res, extensionTabId, token });
+    if (!token?.gqlToken || res?.tabId !== extensionTabId?.extensionTabId)
+      return;
 
     console.log("Attempting to load user and token...");
-
     try {
-      // Handle case where user/token might not be available
-      let user = null;
-      let token = null;
-
-      try {
-        user = await getGoogleUser();
-        token = await getAuthToken();
-      } catch (authError) {
-        console.log("Auth not available, showing auth UI:", authError);
-      }
-
-      console.log("User:", user);
-      console.log("Token:", token);
-
       const ui = await createShadowRootUi(ctx, {
         name: "discover-extension-floater",
         position: "inline",
         anchor: "body",
-        append: "first",
+        append: "before",
         onMount: (container) => {
           console.log("inside floater cs - mounting UI");
           // Don't mount react app directly on <body>
           const wrapper = document.createElement("div");
           wrapper.id = "floater-wrapper";
-          wrapper.style.zIndex = "999999";
+          wrapper.style.zIndex = "2147483647";
           container.append(wrapper);
 
           const root = ReactDOM.createRoot(wrapper);
-          root.render(<App token={token?.authToken} user={user} />);
+          root.render(
+            <ApolloProvider client={apolloClient}>
+              <AuthProvider>
+                <App />
+              </AuthProvider>
+            </ApolloProvider>
+          );
           return { root, wrapper };
         },
         onRemove: (elements) => {

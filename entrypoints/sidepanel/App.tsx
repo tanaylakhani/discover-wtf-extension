@@ -1,7 +1,9 @@
 import ThreadChatBox from "@/components/sidepanel/ThreadChatBox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LinkItem, QUERY_LINKS } from "@/lib/graphql/links";
 import { cleanUrl } from "@/lib/utils";
+import { useQuery } from "@apollo/client";
 import React from "react";
 import useMeasure from "react-use-measure";
 import urlMetadata, { Result } from "url-metadata";
@@ -24,46 +26,35 @@ function App() {
       name: "History",
     },
   };
-  const [history, setHistory] = React.useState<Result[]>([]);
+  const [history, setHistory] = React.useState<LinkItem[]>([]);
   const [activeTab, setActiveTab] =
     React.useState<keyof typeof tabs>("history");
   const [ref, { height }] = useMeasure();
 
   React.useEffect(() => {
     const handleStorageChange = async (changes: any) => {
-      if (changes.extensionTabHistory) {
-        fetchHistory();
+      if (changes.visitedLinkIds || changes.links) {
+        setTimeout(() => {
+          fetchHistory();
+        }, 800);
       }
     };
 
     const fetchHistory = async () => {
-      const storedHistory = await browser.storage.local.get(
-        "extensionTabHistory"
-      );
-      const history = (storedHistory.extensionTabHistory || []) as THistory[];
-      console.log({ history });
-      try {
-        setHistory((prev) => {
-          const urlSet = new Set(prev.map((item) => item.url));
-          // history duplicates in history
-          history.forEach((item) => {
-            if (!urlSet.has(item.url)) {
-              urlSet.add(item.url);
-            }
-          });
-          const final = Array.from(urlSet).map((url) =>
-            history.find((item) => item.url === url)
-          ) as THistory[];
-          console.log({ set: Array.from(urlSet), final });
-          return final;
-        });
-      } catch (error) {
-        console.error("Error fetching URL metadata:", error);
-      }
+      const {
+        visitedLinkIds,
+        links,
+      }: { visitedLinkIds: string[]; links: LinkItem[] } =
+        await browser.storage.local.get(["visitedLinkIds", "links"]);
 
-      // if (isMounted) {
+      const linkMap = new Map(links.map((link) => [link.id, link]));
 
-      // }
+      const history = visitedLinkIds
+        .map((id) => linkMap.get(id))
+        .filter((link): link is LinkItem => Boolean(link))
+        .reverse();
+
+      setHistory(history);
     };
 
     fetchHistory();
@@ -100,7 +91,7 @@ function App() {
       <Tabs
         value={activeTab}
         onValueChange={(tab) => setActiveTab(tab as keyof typeof tabs)}
-        className="w-full px-2 "
+        className="w-full "
       >
         <TabsList ref={ref} className="w-full flex bg-neutral-100 space-x-2">
           {Object.entries(tabs).map(([key, tab]) => (
@@ -128,47 +119,41 @@ function App() {
           </div>
         </TabsContent>
         <TabsContent value="history">
-          <div className="w-full h-full">
-            <ScrollArea
+          <div className="w-full h-full px-2 overflow-y-auto ">
+            {/* <ScrollArea
               style={{ height: `calc(100vh - ${height}px)` }}
               className="w-full relative h-full overflow-y-auto"
-            >
-              {history.length > 0 && (
-                <div className="space-y-4  mb-6 mt-4">
-                  {(Array.from(new Set(history)) as THistory[])
-                    .reverse()
-                    .slice(0, 20)
-                    .map((entry, index) => {
-                      // const images = entry["og:image"]
-                      //   ? entry["og:image"].split(",")
-                      //   : [];
-                      return (
-                        <div
-                          onClick={() => handleHistoryItemClicked(entry.url)}
-                          key={index}
-                          className=" border cursor-pointer border-neutral-200 bg-white rounded-3xl"
-                        >
-                          {/* {images?.length > 0 && (
-                            <img
-                              className="object-cover h-[250px] w-full border-b border-neutral-200"
-                              src={images[0]}
-                              alt=""
-                            />
-                          )} */}
-                          <div className="flex px-4 pb-6 pt-4 flex-col items-start justify-center">
-                            <h3 className="text-lg leading-snug mb-2 font-medium tracking-tight">
-                              {entry.title}
-                            </h3>
-                            <p className="text-neutral-600 font-medium leading-tight">
-                              {cleanUrl(entry.url)}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-            </ScrollArea>
+            > */}
+            {history.length > 0 && (
+              <div>
+                {history.map((entry, index) => {
+                  return (
+                    <div
+                      onClick={() => handleHistoryItemClicked(entry.target_url)}
+                      key={index}
+                      className="overflow-hidden mt-4 first:mt-0 border cursor-pointer border-neutral-200 bg-white rounded-3xl"
+                    >
+                      {entry?.image_url && (
+                        <img
+                          className="object-cover h-[180px] w-full border-b border-neutral-200"
+                          src={entry.image_url}
+                          alt=""
+                        />
+                      )}
+                      <div className="flex px-4 pb-6 pt-4 flex-col items-start justify-center">
+                        <h3 className="text-lg leading-snug mb-2 font-medium tracking-tight">
+                          {entry.title}
+                        </h3>
+                        <p className="text-neutral-600 font-medium leading-tight">
+                          {cleanUrl(entry.target_url)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* </ScrollArea> */}
           </div>
         </TabsContent>
       </Tabs>
