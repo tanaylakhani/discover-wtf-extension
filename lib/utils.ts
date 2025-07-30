@@ -86,7 +86,9 @@ export const getRandomUrl = async (): Promise<string> => {
   }
 
   const randomLink = unvisited[Math.floor(Math.random() * unvisited?.length)];
-
+  await browser.storage.local.set({
+    activeLink: randomLink,
+  });
   // add in the visited Set
   visited.add(randomLink?.id);
 
@@ -107,6 +109,15 @@ const markAsVisited = async (linkId: string, visited: Set<string>) => {
   });
   makeCall(`/track-visit?${stringifiedParams}`).catch((error) => {
     console.error("Failed to mark link as visited in DB:", error);
+  });
+};
+
+export const updateCount = async () => {
+  browser.storage.local.get("urlVisitCount", (data) => {
+    const currentCount = data.urlVisitCount || 0;
+    const newCount = currentCount + 1;
+    browser.storage.local.set({ urlVisitCount: newCount });
+    console.log("Updated URL visit count:", newCount);
   });
 };
 

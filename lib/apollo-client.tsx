@@ -19,7 +19,7 @@ const httpLink = createHttpLink({
     Accept: "application/json",
     "Content-Type": "application/json",
   },
-});
+});  
 
 // Enhanced error handling for browser extensions
 const errorLink = onError(

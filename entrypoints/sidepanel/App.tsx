@@ -141,10 +141,10 @@ function App() {
                         />
                       )}
                       <div className="flex px-4 pb-6 pt-4 flex-col items-start justify-center">
-                        <h3 className="text-lg leading-snug mb-2 font-medium tracking-tight">
+                        <h3 className="text-lg line-clamp-2  leading-snug mb-2 font-medium tracking-tight">
                           {entry.title}
                         </h3>
-                        <p className="text-neutral-600 font-medium leading-tight">
+                        <p className="text-neutral-700 line-clamp-1 font-medium leading-tight">
                           {cleanUrl(entry.target_url)}
                         </p>
                       </div>

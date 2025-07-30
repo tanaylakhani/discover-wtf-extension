@@ -12,33 +12,42 @@ import {
   AnnotationDots,
 } from "@untitled-ui/icons-react";
 import { Button } from "./ui/button";
+import { makeCall } from "@/lib/utils";
+import { LinkItem } from "@/lib/graphql/links";
 
 type FloaterProps = {};
 
 const Floater: React.FC<FloaterProps> = () => {
   const { logout } = useAuth();
   const [count, setCount] = useState(0);
+  const [activeLink, setActiveLink] = useState<LinkItem | null>(null);
+  const [isBookmarked, setIsBookmarked] = useState(false);
 
   useEffect(() => {
-    browser?.storage.local.get("urlVisitCount", (data) => {
-      setCount(data.urlVisitCount || 0);
-    });
+    browser?.storage.local.get(
+      ["urlVisitCount", "bookmarkedLinkIds", "activeLink"],
+      (data) => {
+        console.log({ floaterData: data });
+        setActiveLink(data.activeLink || null);
+        setCount(data.urlVisitCount || 0);
+        setIsBookmarked(
+          (data.bookmarkedLinkIds || []).includes(data?.activeLink?.id)
+        );
+      }
+    );
 
     // Optional: listen to changes in real-time
     browser?.storage.onChanged.addListener((changes, namespace) => {
+      console.log("Storage changes detected:", changes);
       if (changes.urlVisitCount) {
         setCount(changes.urlVisitCount.newValue);
+        // setIsBookmarked(
+        //   (changes.bookmarkedLinkIds?.newValue || []).includes(changes?.activeLink?.newValue?.id)
+        // );
       }
     });
   }, []);
 
-  const options = [
-    { name: "Like", icon: HeartRounded },
-    { name: "Comment", icon: AnnotationDots },
-    { name: "Ask AI", icon: MagicWand01 },
-    { name: "Save", icon: Bookmark },
-    // {name:"Share", icon: <Share/>},
-  ];
   const handleSidePanelOpen = async () => {
     const extensionTabId = await browser.storage.local.get("extensionTabId");
     console.log("Opening side panel for tab:", extensionTabId);
@@ -63,6 +72,76 @@ const Floater: React.FC<FloaterProps> = () => {
       })
       .catch(console.error);
   };
+
+  const handleBookmark = async () => {
+    if (!activeLink) {
+      console.log("No active link to bookmark");
+      return;
+    }
+    const linkId = activeLink?.id;
+    if (!linkId) {
+      console.log("No link ID found to bookmark");
+      return;
+    }
+
+    const { bookmarkedLinkIds } = await browser.storage.local.get(
+      "bookmarkedLinkIds"
+    );
+    const bookmarksIdSet = new Set([...(bookmarkedLinkIds || [])]);
+
+    const alreadyBookmarked = bookmarksIdSet.has(linkId);
+    if (alreadyBookmarked) {
+      bookmarksIdSet.delete(linkId);
+      setIsBookmarked(false);
+      console.log("Link already bookmarked, removing bookmark");
+    } else {
+      console.log("Bookmarking link ID:", linkId);
+      setIsBookmarked(true);
+      bookmarksIdSet.add(linkId);
+    }
+    await browser.storage.local.set({
+      bookmarkedLinkIds: Array.from(bookmarksIdSet),
+    });
+    console.log("Stored bookmarked link IDs:", bookmarksIdSet);
+    browser.runtime.sendMessage({
+      type: "BOOKMARK_LINK",
+      data: { method: alreadyBookmarked ? "DELETE" : "POST", linkId },
+    });
+  };
+  // console.log(isBookmarked);
+
+  const options = [
+    {
+      handleClick: () => {},
+      name: "Like",
+      icon: HeartRounded,
+      fill: "none",
+    },
+    {
+      handleClick: async () => {
+        await handleSidePanelOpen();
+      },
+      name: "Comment",
+      icon: AnnotationDots,
+      fill: "none",
+    },
+    {
+      handleClick: () => {},
+      name: "Ask AI",
+      icon: MagicWand01,
+      fill: "none",
+    },
+    {
+      handleClick: async () => {
+        await handleBookmark();
+      },
+      name: "Save",
+      icon: Bookmark,
+      fill: isBookmarked ? "black" : "none",
+    },
+    // {name:"Share", icon: <Share/>},
+  ];
+
   return (
     <>
       <motion.div className="fixed bottom-20   right-2  top-1/3 ">
@@ -86,12 +165,17 @@ const Floater: React.FC<FloaterProps> = () => {
           {options.map((option, index) => (
             <button
               key={index}
-              onClick={async () => {
-                await handleSidePanelOpen();
-              }}
+              onClick={option.handleClick}
               className="  relative"
+              title={option?.name}
             >
-              <option.icon stroke="none" className="size-6 " />
+              <option.icon
+                style={{
+                  fill: option.fill || "none",
+                }}
+                stroke="black"
+                className="size-6 stroke-black  "
+              />
             </button>
           ))}
         </motion.div>

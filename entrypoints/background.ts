@@ -7,6 +7,7 @@ import {
   hasDiscoverHistoryParam,
   isValidUrl,
   makeCall,
+  updateCount,
 } from "../lib/utils";
 import { QUERY_USER_STRING } from "@/lib/graphql/user";
 
@@ -172,7 +173,7 @@ async function handleActionClick(tab: any) {
     getRandomUrl(),
     animateGlobeIcon(tab?.id as number),
   ]);
-
+  await updateCount();
   handleTab(url);
 }
 
@@ -197,6 +198,10 @@ async function handleMessage(
       break;
     case "SET_GQL_TOKEN":
       handleSetGQLToken(message, sendResponse);
+      break;
+
+    case "BOOKMARK_LINK":
+      handleBookmarkLink(message, sendResponse);
       break;
   }
 }
@@ -333,6 +338,27 @@ const handleDisablePopup = async (
   try {
     console.log("Disabling popup");
     await browser.action.setPopup({ popup: "" });
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({
+      success: false,
+    });
+  }
+};
+const handleBookmarkLink = async (
+  message: any,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log({ message });
+    const params = {
+      linkId: message?.data?.linkId,
+    };
+
+    const stringifiedParams = new URLSearchParams(params).toString();
+    makeCall(`/bookmark?${stringifiedParams}`, {
+      method: message?.data?.method,
+    });
     sendResponse({ success: true });
   } catch (error) {
     sendResponse({

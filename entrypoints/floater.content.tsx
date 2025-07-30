@@ -9,7 +9,7 @@ import apolloClient from "@/lib/apollo-client";
 export default defineContentScript({
   matches: ["<all_urls>"],
   cssInjectionMode: "ui",
-  runAt: "document_idle",
+  runAt: "document_start",
   async main(ctx) {
     console.log("Hello from floater content script!");
     const extensionTabId = await browser.storage.local.get("extensionTabId");
