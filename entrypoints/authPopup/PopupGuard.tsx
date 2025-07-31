@@ -1,9 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
-import { QUERY_LINKS } from "@/lib/graphql/links";
-import { useQuery } from "@apollo/client";
-import { ExternalLink, Globe, Loader, LoaderCircle } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import { ExternalLink, Globe } from "lucide-react";
+import React from "react";
 
 interface PopupGuardProps {}
 
@@ -37,7 +35,7 @@ const PopupGuard: React.FC<PopupGuardProps> = () => {
     return (
       <div className="w-[364px] bg-background  inter-sans flex flex-col">
         {/* Header */}
-        <header className="flex items-center justify-center px-4 py-4 border-b border-border">
+        <header className="flex items-center justify-center px-4 py-4 border-b border-neutral-200">
           <div className="flex items-center gap-2">
             <img
               src={browser.runtime.getURL("/animate/globe1.png")}
@@ -53,7 +51,7 @@ const PopupGuard: React.FC<PopupGuardProps> = () => {
         {/* Content */}
         <main className="flex-1 px-6 py-8 text-center">
           <div className="flex flex-col items-center gap-6">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center border border-border bg-muted/50 dark:bg-input/30">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center border border-neutral-200 bg-muted/50 dark:bg-input/30">
               <ExternalLink
                 className="w-6 h-6 text-primary"
                 strokeWidth={1.5}
@@ -90,7 +88,7 @@ const PopupGuard: React.FC<PopupGuardProps> = () => {
     return (
       <div className="w-[364px] bg-white  font-sans flex flex-col">
         {/* Header */}
-        <header className="flex items-center justify-center px-4 py-4 border-b border-border">
+        <header className="flex items-center justify-center px-4 py-4 border-b border-neutral-200">
           <div className="flex items-center gap-1">
             <img
               src={browser.runtime.getURL("/animate/globe1.png")}
@@ -106,7 +104,7 @@ const PopupGuard: React.FC<PopupGuardProps> = () => {
         {/* Content */}
         <main className="flex-1 px-6 py-8 text-center">
           <div className="flex flex-col items-center gap-6">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center border border-border bg-muted/50 dark:bg-input/30">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center border border-neutral-200 bg-muted/50 dark:bg-input/30">
               <Globe className="w-6 h-6 text-primary" strokeWidth={1.5} />
             </div>
 

@@ -1,17 +1,18 @@
 import ThreadChatBox from "@/components/sidepanel/ThreadChatBox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LinkItem, QUERY_LINKS } from "@/lib/graphql/links";
-import { cleanUrl } from "@/lib/utils";
-import { useQuery } from "@apollo/client";
+import { LinkItem } from "@/lib/graphql/links";
+import { cleanUrl, makeCall, makeCommentsCall } from "@/lib/utils";
 import React from "react";
 import useMeasure from "react-use-measure";
-import urlMetadata, { Result } from "url-metadata";
 
-type THistory = {
-  timestamp: Date;
-  title: string;
-  url: string;
+type Comment = {
+  linkId: string;
+  id: string;
+  userId: string;
+  content: string;
+  isPrivate: boolean;
+  commentedAt: Date;
 };
 
 function App() {
@@ -30,16 +31,35 @@ function App() {
   const [activeTab, setActiveTab] =
     React.useState<keyof typeof tabs>("history");
   const [ref, { height }] = useMeasure();
+  const [input, setInput] = React.useState("");
+  const [comments, setComments] = React.useState<Comment[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [isFetchingComments, setIsFetchingComments] = React.useState(false);
 
   React.useEffect(() => {
-    const handleStorageChange = async (changes: any) => {
-      if (changes.visitedLinkIds || changes.links) {
-        setTimeout(() => {
-          fetchHistory();
-        }, 800);
+    const getComments = async () => {
+      setIsFetchingComments(true);
+      const { activeLink } = await browser.storage.local.get("activeLink");
+      console.log({ activeLink });
+      if (!activeLink) {
+        console.error("No active link found");
+        setIsFetchingComments(false);
+        return;
       }
-    };
+      const stringifiedParams = new URLSearchParams({
+        linkId: activeLink.id,
+      }).toString();
 
+      const response = await makeCommentsCall(`/comment?${stringifiedParams}`);
+      if (!response?.success && response?.error) {
+        console.error("Failed to fetch comments", response.error);
+        setIsFetchingComments(false);
+        return;
+      }
+      console.log({ comments: response.comments });
+      setComments(response.comments);
+      setIsFetchingComments(false);
+    };
     const fetchHistory = async () => {
       const {
         visitedLinkIds,
@@ -56,13 +76,29 @@ function App() {
 
       setHistory(history);
     };
+    const handleStorageChange = async (changes: any) => {
+      if (changes.visitedLinkIds || changes.links) {
+        setTimeout(() => {
+          fetchHistory();
+        }, 800);
+      }
+    };
 
     fetchHistory();
+    getComments();
     browser.storage.onChanged.addListener(handleStorageChange);
+    const listener = async (message: any, sender: any, sendResponse: any) => {
+      if (message.type === "FETCH_COMMENTS") {
+        console.log("Got message");
+        await getComments();
+      }
+    };
+    browser.runtime.onMessage.addListener(listener);
 
     return () => {
       // isMounted = false;
       browser.storage.onChanged.removeListener(handleStorageChange);
+      browser.runtime.onMessage.removeListener(listener);
     };
   }, [activeTab]);
 
@@ -82,6 +118,33 @@ function App() {
         // }
       }
     });
+  }, []);
+
+  const handleSubmit = useCallback(async (message: string, files: File[]) => {
+    setIsLoading(true);
+    const { activeLink } = await browser.storage.local.get("activeLink");
+    if (!activeLink) {
+      console.error("No active link found");
+      setIsLoading(false);
+      return;
+    }
+    const linkId = activeLink.id;
+    const stringifiedParams = new URLSearchParams({
+      linkId,
+    }).toString();
+    const response = await makeCall(`/comment?${stringifiedParams}`, {
+      method: "POST",
+      body: JSON.stringify({ content: message }),
+    });
+    if (!response?.success && !response.comment && response?.error) {
+      console.error("Failed to submit comment", response.error);
+      setIsLoading(false);
+      return;
+    }
+
+    setComments((prev) => [...prev, response.comment]);
+    setInput("");
+    setIsLoading(false);
   }, []);
 
   return (
@@ -112,8 +175,29 @@ function App() {
               style={{ height: `calc(100vh - ${height}px)` }}
               className="w-full relative  overflow-y-auto"
             >
+              {isFetchingComments ? (
+                <span>Loading comments...</span>
+              ) : comments?.length === 0 ? (
+                <span>No Comment yet. Be the first to comment!</span>
+              ) : (
+                <div>
+                  {comments.map((comment, index) => (
+                    <div
+                      key={index}
+                      className="border-b border-neutral-200 py-2"
+                    >
+                      <p className="text-sm">{comment.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="bottom-6 flex items-center justify-center w-full absolute ">
-                <ThreadChatBox />
+                <ThreadChatBox
+                  input={input}
+                  isLoading={isLoading}
+                  setInput={setInput}
+                  onSubmit={handleSubmit}
+                />
               </div>
             </ScrollArea>
           </div>
@@ -131,7 +215,7 @@ function App() {
                     <div
                       onClick={() => handleHistoryItemClicked(entry.target_url)}
                       key={index}
-                      className="overflow-hidden mt-4 first:mt-0 border cursor-pointer border-neutral-200 bg-white rounded-3xl"
+                      className="overflow-hidden mt-4 first:mt-0 border cursor-pointer border-neutral-300 bg-white rounded-3xl"
                     >
                       {entry?.image_url && (
                         <img

@@ -3,6 +3,7 @@ import { twMerge } from "tailwind-merge";
 import { links } from "./data";
 import { LinkItem } from "./graphql/links";
 import { link } from "fs";
+import queryClient from "./query-client";
 
 let urls: string[] = [...links];
 
@@ -86,30 +87,33 @@ export const getRandomUrl = async (): Promise<string> => {
   }
 
   const randomLink = unvisited[Math.floor(Math.random() * unvisited?.length)];
-  await browser.storage.local.set({
-    activeLink: randomLink,
-  });
   // add in the visited Set
   visited.add(randomLink?.id);
 
   // mark the link as visited in storage and db
   markAsVisited(randomLink.id, visited);
+  await browser.storage.local.set({
+    activeLink: randomLink,
+  });
   console.log({ unvisited, set: [...visited] });
 
   return randomLink?.target_url;
 };
 
 const markAsVisited = async (linkId: string, visited: Set<string>) => {
-  const params = {
-    linkId: linkId,
-  };
-  const stringifiedParams = new URLSearchParams(params).toString();
   await browser.storage.local.set({
     visitedLinkIds: [...visited],
   });
-  makeCall(`/track-visit?${stringifiedParams}`).catch((error) => {
-    console.error("Failed to mark link as visited in DB:", error);
+  const data = await queryClient.fetchQuery({
+    queryKey: ["track-visit", linkId],
+    queryFn: () => makeCall(`/track-visit?linkId=${linkId}`),
+    retry: 3,
+    retryDelay: (attempt) => 2 ** attempt * 300,
   });
+
+  // makeCall(`/track-visit?${stringifiedParams}`).catch((error) => {
+  //   console.error("Failed to mark link as visited in DB:", error);
+  // });
 };
 
 export const updateCount = async () => {
@@ -257,7 +261,54 @@ export function hasDiscoverHistoryParam(url: string): boolean {
   }
 }
 
-export const makeCall = async (endpoint: string, options: RequestInit = {}) => {
+export const makeCall = async (
+  endpoint: string,
+  options: RequestInit = {},
+  timeout = 5000 // in milliseconds
+) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  const token = await getGqlToken();
+  if (!token?.gqlToken) {
+    throw new Error("No GraphQL token found");
+  }
+  try {
+    const response = await fetch(
+      `http://192.168.29.152:3000/api/links${endpoint}`,
+      {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token.gqlToken}`,
+        },
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = data?.error || data?.message || "Unknown error occurred";
+      const error = new Error(message);
+      (error as any).status = response.status;
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(id);
+  }
+};
+
+export const makeCommentsCall = async (
+  endpoint: string,
+  options: RequestInit = {}
+) => {
   const token = await getGqlToken();
   if (!token?.gqlToken) {
     throw new Error("No GraphQL token found");
@@ -272,10 +323,6 @@ export const makeCall = async (endpoint: string, options: RequestInit = {}) => {
       },
     }
   );
-
-  if (!response.ok) {
-    throw new Error("Network response was not ok");
-  }
 
   return response.json();
 };

@@ -1,54 +1,116 @@
-import React from "react";
-import Textarea from "react-textarea-autosize";
-import { Button } from "../ui/button";
-import { ArrowUp, Paperclip } from "lucide-react";
+"use client";
 
-type ThreadChatBoxProps = {
-  onSendMessage?: (message: string) => void;
-  value?: string;
-  onChange?: (value: string) => void;
+import {
+  PromptInput,
+  PromptInputAction,
+  PromptInputActions,
+  PromptInputTextarea,
+} from "@/components/ui/prompt-input";
+import { Button } from "@/components/ui/button";
+import { ArrowUp, Paperclip, Square, X } from "lucide-react";
+import { useRef, useState } from "react";
+
+type TChatBoxProps = {
+  onSubmit: (message: string, files: File[]) => void;
+  input: string;
+  setInput: (value: string) => void;
+  isLoading: boolean;
 };
 
-const ThreadChatBox: React.FC<ThreadChatBoxProps> = ({
-  onSendMessage,
-  value,
-  onChange,
-}) => {
+export default function ThreadChatBox({
+  onSubmit,
+  input,
+  isLoading,
+  setInput,
+}: TChatBoxProps) {
+  const [files, setFiles] = useState<File[]>([]);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSubmit = async () => {
+    if (input.trim() || files.length > 0) {
+      onSubmit(input, files);
+    }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      const newFiles = Array.from(event.target.files);
+      setFiles((prev) => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    if (uploadInputRef?.current) {
+      uploadInputRef.current.value = "";
+    }
+  };
+
   return (
-    <div className="border bg-white shadow-xl flex items-end justify-center border-neutral-200 rounded-3xl w-full p-4">
-      <form
-        className="flex items-end w-full"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onSendMessage?.(value || "");
-        }}
-      >
-        <Textarea
-          minRows={3}
-          placeholder="Write a message..."
-          value={value}
-          onChange={(e) => onChange?.(e.target.value)}
-          className="resize-none text-base  appearance-none w-full bg-transparent focus:outline-none focus:ring-0"
-        />
-        <Button
-          type="button"
-          size={"icon"}
-          variant={"outline"}
-          className="ml-2 rounded-full"
-        >
-          <Paperclip className="h-5 w-5 text-neutral-800" />
-        </Button>
-        <Button
-          type="submit"
-          size={"icon"}
-          variant={"outline"}
-          className="ml-2 rounded-full"
-        >
-          <ArrowUp className="h-5 w-5 text-neutral-800" />
-        </Button>
-      </form>
-    </div>
-  );
-};
+    <PromptInput
+      value={input}
+      onValueChange={setInput}
+      isLoading={isLoading}
+      onSubmit={handleSubmit}
+      className="w-full max-w-(--breakpoint-md)"
+    >
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2 pb-2">
+          {files.map((file, index) => (
+            <div
+              key={index}
+              className="bg-secondary flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Paperclip className="size-4" />
+              <span className="max-w-[120px] truncate">{file.name}</span>
+              <button
+                onClick={() => handleRemoveFile(index)}
+                className="hover:bg-secondary/50 rounded-full p-1"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
-export default ThreadChatBox;
+      <PromptInputTextarea placeholder="Ask me anything..." />
+
+      <PromptInputActions className="flex items-center justify-between gap-2 pt-2">
+        <PromptInputAction tooltip="Attach files">
+          <label
+            htmlFor="file-upload"
+            className="hover:bg-secondary-foreground/10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-2xl"
+          >
+            <input
+              type="file"
+              multiple
+              onChange={handleFileChange}
+              className="hidden"
+              id="file-upload"
+            />
+            <Paperclip className="text-primary size-5" />
+          </label>
+        </PromptInputAction>
+
+        <PromptInputAction
+          tooltip={isLoading ? "Stop generation" : "Send message"}
+        >
+          <Button
+            variant="default"
+            size="icon"
+            className="h-8 w-8 rounded-full"
+            onClick={handleSubmit}
+          >
+            {isLoading ? (
+              <Square className="size-5 fill-current" />
+            ) : (
+              <ArrowUp className="size-5" />
+            )}
+          </Button>
+        </PromptInputAction>
+      </PromptInputActions>
+    </PromptInput>
+  );
+}

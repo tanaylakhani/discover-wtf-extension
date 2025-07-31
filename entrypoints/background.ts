@@ -1,36 +1,17 @@
-import { links } from "@/lib/data";
 import {
   animateGlobeIcon,
   fetchInitialLinks,
-  getGqlToken,
   getRandomUrl,
   hasDiscoverHistoryParam,
   isValidUrl,
   makeCall,
   updateCount,
 } from "../lib/utils";
-import { QUERY_USER_STRING } from "@/lib/graphql/user";
 
 // Global variables to store the extension tab ID and window ID
 let extensionTabId: number | null = null;
 let extensionWindowId: number | null = null;
 
-// const response = await fetch("https://api.betterstacks.com/graphql", {
-//   method: "POST",
-//   headers: {
-//     Accept: "application/json",
-//     "Content-Type": "application/json",
-//     "X-Authorization": gqlToken,
-//     Authorization: `Bearer ${gqlToken}`,
-//   },
-//   body: JSON.stringify({
-//     query: RECALL_LINKS_QUERY_STRING(3, 1, 50),
-//   }),
-// });
-// browser.runtime.onInstalled.addListener((details) => {
-//   console.log("Extension installed:", details);
-
-// });
 export default defineBackground(async () => {
   (async () => {
     const { gqlToken } = await browser.storage.local.get("gqlToken");
@@ -174,6 +155,9 @@ async function handleActionClick(tab: any) {
     animateGlobeIcon(tab?.id as number),
   ]);
   await updateCount();
+  browser.runtime.sendMessage({
+    type: "FETCH_COMMENTS",
+  });
   handleTab(url);
 }
 
@@ -202,6 +186,9 @@ async function handleMessage(
 
     case "BOOKMARK_LINK":
       handleBookmarkLink(message, sendResponse);
+      break;
+    case "LIKE_LINK":
+      handleLikeLink(message, sendResponse);
       break;
   }
 }
@@ -356,7 +343,28 @@ const handleBookmarkLink = async (
     };
 
     const stringifiedParams = new URLSearchParams(params).toString();
-    makeCall(`/bookmark?${stringifiedParams}`, {
+    await makeCall(`/bookmark?${stringifiedParams}`, {
+      method: message?.data?.method,
+    });
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({
+      success: false,
+    });
+  }
+};
+const handleLikeLink = async (
+  message: any,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log({ message });
+    const params = {
+      linkId: message?.data?.linkId,
+    };
+
+    const stringifiedParams = new URLSearchParams(params).toString();
+    await makeCall(`/like?${stringifiedParams}`, {
       method: message?.data?.method,
     });
     sendResponse({ success: true });

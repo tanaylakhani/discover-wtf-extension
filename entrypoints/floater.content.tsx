@@ -1,62 +1,77 @@
 import App from "@/components/App";
+import { AuthProvider } from "@/lib/auth-context";
 import { getGqlToken } from "@/lib/utils";
 import ReactDOM from "react-dom/client";
 import "./style.css";
-import { AuthProvider } from "@/lib/auth-context";
-import { ApolloClient, ApolloProvider } from "@apollo/client";
-import apolloClient from "@/lib/apollo-client";
+
+let uiInstance: Awaited<ReturnType<typeof createShadowRootUi>> | null = null;
 
 export default defineContentScript({
   matches: ["<all_urls>"],
   cssInjectionMode: "ui",
   runAt: "document_start",
+
   async main(ctx) {
     console.log("Hello from floater content script!");
-    const extensionTabId = await browser.storage.local.get("extensionTabId");
-    const res = await browser.runtime.sendMessage({
-      type: "GET_CURRENT_TAB_ID",
-    });
-    const token = await getGqlToken();
-    console.log({ res, extensionTabId, token });
-    if (!token?.gqlToken || res?.tabId !== extensionTabId?.extensionTabId)
-      return;
 
-    console.log("Attempting to load user and token...");
-    try {
-      const ui = await createShadowRootUi(ctx, {
-        name: "discover-extension-floater",
-        position: "inline",
-        anchor: "body",
-        append: "before",
-        onMount: (container) => {
-          console.log("inside floater cs - mounting UI");
-          // Don't mount react app directly on <body>
-          const wrapper = document.createElement("div");
-          wrapper.id = "floater-wrapper";
-          wrapper.style.zIndex = "2147483647";
-          container.append(wrapper);
+    // Define the mount logic
+    const maybeMountUi = async () => {
+      const extensionTabId = (await browser.storage.local.get("extensionTabId"))
+        ?.extensionTabId;
+      const res = await browser.runtime.sendMessage({
+        type: "GET_CURRENT_TAB_ID",
+      });
+      const token = await getGqlToken();
 
-          const root = ReactDOM.createRoot(wrapper);
-          root.render(
-            <ApolloProvider client={apolloClient}>
+      const shouldMount = token?.gqlToken && res?.tabId === extensionTabId;
+
+      if (shouldMount && !uiInstance) {
+        console.log("Mounting floater UI...");
+
+        uiInstance = await createShadowRootUi(ctx, {
+          name: "discover-extension-floater",
+          position: "inline",
+          anchor: "body",
+          append: "before",
+          onMount: (container) => {
+            const wrapper = document.createElement("div");
+            wrapper.id = "floater-wrapper";
+            wrapper.style.zIndex = "2147483647";
+            container.append(wrapper);
+
+            const root = ReactDOM.createRoot(wrapper);
+            root.render(
               <AuthProvider>
                 <App />
               </AuthProvider>
-            </ApolloProvider>
-          );
-          return { root, wrapper };
-        },
-        onRemove: (elements) => {
-          console.log("Removing UI elements");
-          elements?.root.unmount();
-          elements?.wrapper.remove();
-        },
-      });
+            );
+            return { root, wrapper };
+          },
+          onRemove: (elements) => {
+            console.log("Unmounting floater UI...");
+            elements?.root.unmount();
+            elements?.wrapper.remove();
+          },
+        });
 
-      ui.mount();
-      console.log("UI mounted successfully");
-    } catch (error) {
-      console.error("Error in content script:", error);
-    }
+        uiInstance.mount();
+      } else if (!shouldMount && uiInstance) {
+        console.log("Conditions unmet — unmounting floater UI...");
+        await uiInstance.remove();
+        uiInstance = null;
+      }
+    };
+
+    // Initial check
+    await maybeMountUi();
+
+    // React to gqlToken or extensionTabId changes
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+
+      if ("gqlToken" in changes || "extensionTabId" in changes) {
+        maybeMountUi();
+      }
+    });
   },
 });
