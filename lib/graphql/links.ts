@@ -511,3 +511,18 @@ export const SIMILAR_LINKS_QUERY = (
     }
   }
 `;
+
+export const PUBLIC_RANDOM_LINKS_QUERY = gql`
+  query GetPublicRandomLinks {
+    public_random_links {
+      id
+      title
+      description
+      target_url
+      domain
+      favicon_url
+      screenshot_url
+      created_at
+    }
+  }
+`;

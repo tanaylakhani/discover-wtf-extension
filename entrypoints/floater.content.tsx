@@ -3,21 +3,52 @@ import { AuthProvider } from "@/lib/auth-context";
 import { getGqlToken } from "@/lib/utils";
 import ReactDOM from "react-dom/client";
 import "./style.css";
+import { QueryClientProvider } from "@tanstack/react-query";
+import queryClient from "@/lib/query-client";
 
 let uiInstance: Awaited<ReturnType<typeof createShadowRootUi>> | null = null;
 
 export default defineContentScript({
   matches: ["<all_urls>"],
   cssInjectionMode: "ui",
-  runAt: "document_start",
+  runAt: "document_idle", // Changed from document_start to document_idle
 
   async main(ctx) {
     console.log("Hello from floater content script!");
 
+    // Wait for body to be available
+    const waitForBody = () => {
+      return new Promise<void>((resolve) => {
+        if (document.body) {
+          resolve();
+          return;
+        }
+
+        const observer = new MutationObserver(() => {
+          if (document.body) {
+            observer.disconnect();
+            resolve();
+          }
+        });
+
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+        });
+      });
+    };
+
     // Define the mount logic
     const maybeMountUi = async () => {
-      const extensionTabId = (await browser.storage.local.get("extensionTabId"))
-        ?.extensionTabId;
+      // Ensure body exists before proceeding
+      await waitForBody();
+
+      const { extensionTabId, activeLink, urlVisitCount } =
+        await browser.storage.local.get([
+          "extensionTabId",
+          "activeLink",
+          "urlVisitCount",
+        ]);
       const res = await browser.runtime.sendMessage({
         type: "GET_CURRENT_TAB_ID",
       });
@@ -31,7 +62,7 @@ export default defineContentScript({
         uiInstance = await createShadowRootUi(ctx, {
           name: "discover-extension-floater",
           position: "inline",
-          anchor: "body",
+          anchor: () => document.body || document.documentElement,
           append: "before",
           onMount: (container) => {
             const wrapper = document.createElement("div");
@@ -41,9 +72,11 @@ export default defineContentScript({
 
             const root = ReactDOM.createRoot(wrapper);
             root.render(
-              <AuthProvider>
-                <App />
-              </AuthProvider>
+              // <AuthProvider>
+              <QueryClientProvider client={queryClient}>
+                <App activeLink={activeLink} urlVisitCount={urlVisitCount} />
+              </QueryClientProvider>
+              // </AuthProvider>
             );
             return { root, wrapper };
           },

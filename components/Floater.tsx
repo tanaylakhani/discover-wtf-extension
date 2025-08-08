@@ -1,53 +1,58 @@
 import rabbit from "@/assets/rabbit-hole-icon.gif";
 import spiral from "@/assets/spiral.png";
 import "@/entrypoints/style.css";
+import { useLike } from "@/hooks/useLike";
 import { LinkItem } from "@/lib/graphql/links";
-import { cn } from "@/lib/utils";
+import queryClient from "@/lib/query-client";
+import { cn, makeCall, PublicRandomLink } from "@/lib/utils";
 import {
   AnnotationDots,
   Bookmark,
   HeartRounded,
   MagicWand01,
+  Plus,
   X,
 } from "@untitled-ui/icons-react";
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useEffect, useState } from "react";
-type FloaterProps = {};
+import React, { useState } from "react";
+type FloaterProps = {
+  activeLink: PublicRandomLink | null;
+  urlVisitCount: number;
+};
 
-const Floater: React.FC<FloaterProps> = () => {
-  const [count, setCount] = useState(0);
-  const [activeLink, setActiveLink] = useState<LinkItem | null>(null);
-  const [isBookmarked, setIsBookmarked] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
-  const [isPending, setIsPending] = useState(false);
+type GetLinksPayload = {
+  count: number;
+  data: {
+    userId: string;
+    linkId: string;
+    likedAt: Date;
+  }[];
+};
 
+const Floater: React.FC<FloaterProps> = ({
+  activeLink: link,
+  urlVisitCount,
+}) => {
+  const [count, setCount] = useState(urlVisitCount || 0);
+  const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(link);
+  const { likeQuery, toggleLike } = useLike(link?.id as string);
+  const likeData = likeQuery?.data;
+  console.log({ data: likeData });
   useEffect(() => {
-    browser?.storage.local.get(
-      [
-        "urlVisitCount",
-        "bookmarkedLinkIds",
-        "activeLink",
-        "likedLinkIds",
-        "gqlToken",
-      ],
-      (data) => {
-        console.log({ floaterData: data });
-        setActiveLink(data.activeLink || null);
-        setCount(data.urlVisitCount || 0);
-        setIsBookmarked(
-          (data.bookmarkedLinkIds || []).includes(data?.activeLink?.id)
-        );
-        setIsLiked((data.likedLinkIds || []).includes(data?.activeLink?.id));
-      }
-    );
-
-    // Optional: listen to changes in real-time
-    browser?.storage.onChanged.addListener((changes, namespace) => {
-      console.log("Storage changes detected:", changes);
-      if (changes.urlVisitCount) {
-        setCount(changes.urlVisitCount.newValue);
-      }
-    });
+    const listener = (
+      changes: { [key: string]: globalThis.Browser.storage.StorageChange },
+      areaName: globalThis.Browser.storage.AreaName
+    ) => {
+      if (areaName !== "local")
+        if (changes?.urlVisitCount || changes.activeLink) {
+          setCount(changes?.urlVisitCount?.newValue);
+          setActiveLink(changes?.activeLink?.newValue);
+        }
+    };
+    browser.storage.onChanged.addListener(listener);
+    return () => {
+      browser.storage.onChanged.removeListener(listener);
+    };
   }, []);
 
   const handleSidePanelOpen = async () => {
@@ -68,92 +73,92 @@ const Floater: React.FC<FloaterProps> = () => {
       .catch(console.error);
   };
 
-  const handleBookmark = async () => {
-    if (!activeLink) {
-      console.log("No active link to bookmark");
-      return;
-    }
-    const linkId = activeLink?.id;
-    if (!linkId) {
-      console.log("No link ID found to bookmark");
-      return;
-    }
+  // const handleBookmark = async () => {
+  //   if (!activeLink) {
+  //     console.log("No active link to bookmark");
+  //     return;
+  //   }
+  //   const linkId = activeLink?.id;
+  //   if (!linkId) {
+  //     console.log("No link ID found to bookmark");
+  //     return;
+  //   }
 
-    const { bookmarkedLinkIds } = await browser.storage.local.get(
-      "bookmarkedLinkIds"
-    );
-    const bookmarksIdSet = new Set([...(bookmarkedLinkIds || [])]);
+  //   const { bookmarkedLinkIds } = await browser.storage.local.get(
+  //     "bookmarkedLinkIds"
+  //   );
+  //   const bookmarksIdSet = new Set([...(bookmarkedLinkIds || [])]);
 
-    const alreadyBookmarked = bookmarksIdSet.has(linkId);
-    if (alreadyBookmarked) {
-      bookmarksIdSet.delete(linkId);
-      setIsBookmarked(false);
-      console.log("Link already bookmarked, removing bookmark");
-    } else {
-      console.log("Bookmarking link ID:", linkId);
-      setIsBookmarked(true);
-      bookmarksIdSet.add(linkId);
-    }
-    setIsPending(true);
-    await browser.storage.local.set({
-      bookmarkedLinkIds: Array.from(bookmarksIdSet),
-    });
-    console.log("Stored bookmarked link IDs:", bookmarksIdSet);
+  //   const alreadyBookmarked = bookmarksIdSet.has(linkId);
+  //   if (alreadyBookmarked) {
+  //     bookmarksIdSet.delete(linkId);
+  //     setIsBookmarked(false);
+  //     console.log("Link already bookmarked, removing bookmark");
+  //   } else {
+  //     console.log("Bookmarking link ID:", linkId);
+  //     setIsBookmarked(true);
+  //     bookmarksIdSet.add(linkId);
+  //   }
+  //   setIsPending(true);
+  //   await browser.storage.local.set({
+  //     bookmarkedLinkIds: Array.from(bookmarksIdSet),
+  //   });
+  //   console.log("Stored bookmarked link IDs:", bookmarksIdSet);
 
-    const res = await browser.runtime.sendMessage({
-      type: "BOOKMARK_LINK",
-      data: { method: alreadyBookmarked ? "DELETE" : "POST", linkId },
-    });
-    setIsPending(false);
-    console.log("Bookmark response:", res);
-  };
-  const handleLike = async () => {
-    if (!activeLink) {
-      console.log("No active link to like");
-      return;
-    }
-    const linkId = activeLink?.id;
-    if (!linkId) {
-      console.log("No link ID found to bookmark");
-      return;
-    }
+  //   const res = await browser.runtime.sendMessage({
+  //     type: "BOOKMARK_LINK",
+  //     data: { method: alreadyBookmarked ? "DELETE" : "POST", linkId },
+  //   });
+  //   setIsPending(false);
+  //   console.log("Bookmark response:", res);
+  // };
+  // const handleLike = async () => {
+  //   if (!activeLink) {
+  //     console.log("No active link to like");
+  //     return;
+  //   }
+  //   const linkId = activeLink?.id;
+  //   if (!linkId) {
+  //     console.log("No link ID found to bookmark");
+  //     return;
+  //   }
 
-    const { likedLinkIds } = await browser.storage.local.get("likedLinkIds");
-    const likesIdSet = new Set([...(likedLinkIds || [])]);
+  //   const { likedLinkIds } = await browser.storage.local.get("likedLinkIds");
+  //   const likesIdSet = new Set([...(likedLinkIds || [])]);
 
-    const alreadyLiked = likesIdSet.has(linkId);
-    if (alreadyLiked) {
-      likesIdSet.delete(linkId);
-      setIsLiked(false);
-      console.log("Link already liked, removing like");
-    } else {
-      console.log("Liking link ID:", linkId);
-      setIsLiked(true);
-      likesIdSet.add(linkId);
-    }
-    setIsPending(true);
-    await browser.storage.local.set({
-      likedLinkIds: Array.from(likesIdSet),
-    });
-    console.log("Stored liked link IDs:", likesIdSet);
+  //   const alreadyLiked = likesIdSet.has(linkId);
+  //   if (alreadyLiked) {
+  //     likesIdSet.delete(linkId);
+  //     setIsLiked(false);
+  //     console.log("Link already liked, removing like");
+  //   } else {
+  //     console.log("Liking link ID:", linkId);
+  //     setIsLiked(true);
+  //     likesIdSet.add(linkId);
+  //   }
+  //   setIsPending(true);
+  //   await browser.storage.local.set({
+  //     likedLinkIds: Array.from(likesIdSet),
+  //   });
+  //   console.log("Stored liked link IDs:", likesIdSet);
 
-    const res = await browser.runtime.sendMessage({
-      type: "LIKE_LINK",
-      data: { method: alreadyLiked ? "DELETE" : "POST", linkId },
-    });
-    setIsPending(false);
-    console.log("Like response:", res);
-  };
+  //   const res = await browser.runtime.sendMessage({
+  //     type: "LIKE_LINK",
+  //     data: { method: alreadyLiked ? "DELETE" : "POST", linkId },
+  //   });
+  //   setIsPending(false);
+  //   console.log("Like response:", res);
+  // };
   // console.log(isBookmarked);
 
   const options = [
     {
       handleClick: async () => {
-        await handleLike();
+        toggleLike(!likeQuery?.data?.liked);
       },
       name: "Like",
       icon: HeartRounded,
-      fill: isLiked ? "black" : "none",
+      fill: likeData?.liked ? "black" : "none",
     },
     {
       handleClick: async () => {
@@ -171,21 +176,43 @@ const Floater: React.FC<FloaterProps> = () => {
     },
     {
       handleClick: async () => {
-        await handleBookmark();
+        // await handleBookmark();
       },
       name: "Save",
       icon: Bookmark,
-      fill: isBookmarked ? "black" : "none",
+      // fill: isBookmarked ? "black" : "none",
+      fill: "none",
     },
     // {name:"Share", icon: <Share/>},
   ];
-  const [gifKey, setGifKey] = useState(0);
   const [inRabbitHole, setIsInRabbitHole] = useState(false);
-  const triggerGif = () => {
-    // This causes <img> to rerender and restart the GIF
-    setGifKey((prev) => prev + 1);
+
+  const [isOpen, setIsOpen] = useState(false);
+
+  const containerVariants = {
+    open: {
+      height: 200,
+      transition: {
+        when: "beforeChildren",
+        staggerChildren: 0.08,
+        duration: 0.3,
+      },
+    },
+    closed: {
+      height: 0,
+      transition: {
+        when: "afterChildren",
+        staggerChildren: 0.05,
+        staggerDirection: -1,
+        duration: 0.2,
+      },
+    },
   };
 
+  const itemVariants = {
+    open: { opacity: 1, y: 0, scale: 1 },
+    closed: { opacity: 0, y: 10, scale: 0.95 },
+  };
   return (
     <>
       {" "}
@@ -237,15 +264,14 @@ const Floater: React.FC<FloaterProps> = () => {
             <span className="text-neutral-200 text-sm font-semibold mr-1">
               Discover Count:
             </span>
-            <span className="font-semibold tracking-tight text-white">
+            <span className="font-semibold text-sm tracking-tight text-white">
               {count}
             </span>
           </div>
         </motion.div>
         <motion.div
-          title="Discover Count"
           className={
-            "bg-white border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
+            "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[50%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
           }
           // className="bg-neutral-50 border border-neutral-200  mb-4 size-10 font-medium flex items-center justify-center rounded-l-full text-neutral-900"
         >
@@ -279,26 +305,121 @@ const Floater: React.FC<FloaterProps> = () => {
           </AnimatePresence>
         </motion.div>
       </div>
-      <motion.div className="h-fit fixed bottom-1/3  right-2  px-2 py-2.5 shadow-black/10 drop-shadow-md rounded-lg  bg-neutral-100 flex flex-col items-center  justify-center gap-y-4 border border-neutral-200  transition-all duration-200 cursor-pointer">
+      {/* <motion.div className="h-fit fixed bottom-20  right-4  px-2 py-2.5  rounded-lg flex flex-col items-center  justify-center gap-y-4 transition-all duration-200 cursor-pointer">
         {options.map((option, index) => (
           <button
             key={index}
             onClick={option.handleClick}
-            className="  relative"
-            title={option?.name}
+            className=" p-2 size-14 rounded-full flex items-center justify-center relative group border border-neutral-200 bg-neutral-100"
+            // title={option?.name}
             disabled={isPending}
           >
+            <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75   font-medium px-2 py-1 rounded-lg">
+              {option.name}
+            </div>
+
+            {index === 0 && (
+              <div className="p-1.5 rounded-full border border-neutral-200  absolute -top-2  flex items-center justify-center -right-2 bg-white ">
+                <span className="text-xs font-semibold">20</span>
+              </div>
+            )}
             <option.icon
               style={{
                 fill: option.fill || "none",
-                stroke: "black",
+                stroke: "#404040",
                 strokeWidth: 1.4,
               }}
-              className="size-8 stroke-black  "
+              className="size-6  "
             />
           </button>
         ))}
-      </motion.div>
+      </motion.div> */}
+      <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              className=" flex flex-col items-center "
+              initial="closed"
+              animate="open"
+              exit="closed"
+              variants={containerVariants}
+            >
+              {options.map((option, index) => (
+                <motion.button
+                  key={index}
+                  variants={itemVariants}
+                  onClick={option.handleClick}
+                  // disabled={isPending}
+                  className="p-2 size-14 rounded-full flex items-center justify-center relative group "
+                >
+                  {/* Tooltip */}
+                  <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
+                    {option.name}
+                  </div>
+
+                  {/* Badge on first item */}
+                  {index === 0 && (
+                    <div className="p-1.5 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 bg-white">
+                      <span className="text-xs font-semibold">
+                        {Number(likeData?.count) || 0}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Icon */}
+                  <option.icon
+                    style={{
+                      fill: option.fill || "none",
+                      stroke: "#404040",
+                      strokeWidth: 1.4,
+                    }}
+                    className="size-6"
+                  />
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Toggle Button */}
+        <motion.button
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="size-14 rounded-full flex items-center justify-center"
+          animate={{ rotate: isOpen ? 45 : 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <Plus className="size-6" />
+        </motion.button>
+      </div>
+      {/* <motion.div
+        transition={{ duration: 0.3 }}
+        style={{ borderRadius: isOpen ? "1.5rem" : "9999px" }}
+        className={cn(
+          "left-2 bg-white p-2 fixed bottom-20 ",
+          !isOpen && "size-14"
+        )}
+      >
+        <motion.div
+          layout
+          className="w-full overflow-hidden"
+          animate={{ height: isOpen ? 200 : 0 }}
+          transition={{ duration: 0.3 }}
+        />
+        <button
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="size-14"
+          style={{
+            transform: isOpen ? "rotate(45deg)" : "rotate(0deg)",
+          }}
+        >
+          <Plus
+            style={{
+              stroke: "black",
+            }}
+            className=" size-6"
+          />
+        </button>
+      </motion.div> */}
       {/* <Button
         title="Logout"
         className="bg-neutral-100 fixed right-2  border border-neutral-200  mt-2 size-10 font-medium flex items-center justify-center rounded-full "

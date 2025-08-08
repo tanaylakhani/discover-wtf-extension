@@ -13,7 +13,9 @@ import { useRef, useState } from "react";
 type TChatBoxProps = {
   onSubmit: (message: string, files: File[]) => void;
   input: string;
+  files: File[];
   setInput: (value: string) => void;
+  setFiles: React.Dispatch<React.SetStateAction<File[]>>;
   isLoading: boolean;
 };
 
@@ -22,8 +24,9 @@ export default function ThreadChatBox({
   input,
   isLoading,
   setInput,
+  files,
+  setFiles,
 }: TChatBoxProps) {
-  const [files, setFiles] = useState<File[]>([]);
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async () => {
@@ -52,7 +55,7 @@ export default function ThreadChatBox({
       onValueChange={setInput}
       isLoading={isLoading}
       onSubmit={handleSubmit}
-      className="w-full max-w-(--breakpoint-md)"
+      className="w-full bg-white max-w-(--breakpoint-md)"
     >
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 pb-2">

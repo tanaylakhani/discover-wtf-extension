@@ -1,8 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { links } from "./data";
-import { LinkItem } from "./graphql/links";
-import { link } from "fs";
 import queryClient from "./query-client";
 
 let urls: string[] = [...links];
@@ -69,7 +67,7 @@ export const getRandomUrl = async (): Promise<string> => {
     visitedLinkIds,
     currentPage,
   }: {
-    links: LinkItem[];
+    links: PublicRandomLink[];
     visitedLinkIds: string[];
     currentPage: number;
   } = await browser.storage.local.get([
@@ -82,8 +80,9 @@ export const getRandomUrl = async (): Promise<string> => {
   let unvisited = links.filter((link) => !visited.has(link.id));
 
   if (unvisited.length === 0) {
+    console.log("fetching new links for next page:", currentPage);
     const newLinks = await fetchNextPage(currentPage);
-    unvisited = newLinks.filter((link) => !visited.has(link.id));
+    unvisited = newLinks!.filter((link) => !visited.has(link.id));
   }
 
   const randomLink = unvisited[Math.floor(Math.random() * unvisited?.length)];
@@ -95,6 +94,7 @@ export const getRandomUrl = async (): Promise<string> => {
   await browser.storage.local.set({
     activeLink: randomLink,
   });
+
   console.log({ unvisited, set: [...visited] });
 
   return randomLink?.target_url;
@@ -107,8 +107,6 @@ const markAsVisited = async (linkId: string, visited: Set<string>) => {
   const data = await queryClient.fetchQuery({
     queryKey: ["track-visit", linkId],
     queryFn: () => makeCall(`/track-visit?linkId=${linkId}`),
-    retry: 3,
-    retryDelay: (attempt) => 2 ** attempt * 300,
   });
 
   // makeCall(`/track-visit?${stringifiedParams}`).catch((error) => {
@@ -130,20 +128,83 @@ export const updateCount = async () => {
 // }
 // return response?.success;
 
+export const makeCall = async (
+  endpoint: string,
+  options: RequestInit = {},
+  timeout = 6000 // in milliseconds
+) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  const token = await getGqlToken();
+  if (!token?.gqlToken) {
+    throw new Error("No GraphQL token found");
+  }
+  try {
+    const response = await fetch(`http://localhost:3001/api/links${endpoint}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token.gqlToken}`,
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+    console.log({ data });
+    if (!response.ok) {
+      const message = data?.error || "Unknown error occurred";
+      const error = new Error(message);
+      (error as any).status = response.status;
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(id);
+  }
+};
+
+export type PublicRandomLink = {
+  id: string;
+  title: string;
+  description: string;
+  target_url: string;
+  domain: string;
+  favicon_url: string;
+  screenshot_url: string;
+  created_at: string; // ISO timestamp
+  __typename: "PublicRandomLink";
+};
+
+export type GetLinksPayload = {
+  count: number;
+  data: {
+    userId: string;
+    linkId: string;
+    likedAt: Date;
+  }[];
+};
+
 export const fetchInitialLinks = async () => {
   const { links } = await browser.storage.local.get("links");
 
   if (!links || links.length === 0) {
     console.log("No Links found in storage, fetching from server...");
     try {
-      const response = await makeCall("/recall");
+      const response = await makeCall("/random", {}, 10000);
       console.log({ response });
-      if (response?.recall_links) {
+      if (response?.random_links) {
         await browser.storage.local.set({
-          links: response.recall_links,
+          links: response.random_links,
           currentPage: 1,
         });
         console.log("Links fetched and stored successfully");
+        return response.random_links as PublicRandomLink[];
       } else {
         console.error("No links found in response");
       }
@@ -156,12 +217,13 @@ export const fetchInitialLinks = async () => {
 const fetchNextPage = async (currentPage: number) => {
   console.log("Fetching the next batch of links for page:", currentPage);
   const nextPage = currentPage + 1;
-  const params = {
-    currentPage: nextPage.toString(),
-  };
-  const stringifiedParams = new URLSearchParams(params).toString();
-  const response = await makeCall(`/recall?${stringifiedParams}`);
-  const newLinks = response?.recall_links as LinkItem[];
+  // const params = {
+  //   currentPage: nextPage.toString(),
+  // };
+  // const stringifiedParams = new URLSearchParams(params).toString();
+
+  const response = await makeCall("/random", {}, 10000);
+  const newLinks = response?.random_links as PublicRandomLink[];
 
   // If next page has no links then user has visited all links
   if (!newLinks || newLinks.length === 0) {
@@ -261,50 +323,6 @@ export function hasDiscoverHistoryParam(url: string): boolean {
   }
 }
 
-export const makeCall = async (
-  endpoint: string,
-  options: RequestInit = {},
-  timeout = 5000 // in milliseconds
-) => {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  const token = await getGqlToken();
-  if (!token?.gqlToken) {
-    throw new Error("No GraphQL token found");
-  }
-  try {
-    const response = await fetch(
-      `http://192.168.29.152:3000/api/links${endpoint}`,
-      {
-        ...options,
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token.gqlToken}`,
-        },
-      }
-    );
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      const message = data?.error || data?.message || "Unknown error occurred";
-      const error = new Error(message);
-      (error as any).status = response.status;
-      throw error;
-    }
-
-    return data;
-  } catch (error) {
-    if ((error as Error).name === "AbortError") {
-      throw new Error("Request timed out");
-    }
-    throw error;
-  } finally {
-    clearTimeout(id);
-  }
-};
-
 export const makeCommentsCall = async (
   endpoint: string,
   options: RequestInit = {}
@@ -313,16 +331,23 @@ export const makeCommentsCall = async (
   if (!token?.gqlToken) {
     throw new Error("No GraphQL token found");
   }
-  const response = await fetch(
-    `http://192.168.29.152:3000/api/links${endpoint}`,
-    {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token.gqlToken}`,
-      },
-    }
-  );
+  const response = await fetch(`http://localhost:3001/api/links${endpoint}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token.gqlToken}`,
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(
+      `Failed to make comments call: ${errorData?.error || "Unknown error"}`
+    );
+  }
 
   return response.json();
 };
+
+export function capitalizeFirstLetter(str: string): string {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}

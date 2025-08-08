@@ -1,6 +1,8 @@
+import queryClient from "@/lib/query-client";
 import {
   animateGlobeIcon,
   fetchInitialLinks,
+  GetLinksPayload,
   getRandomUrl,
   hasDiscoverHistoryParam,
   isValidUrl,
@@ -11,6 +13,7 @@ import {
 // Global variables to store the extension tab ID and window ID
 let extensionTabId: number | null = null;
 let extensionWindowId: number | null = null;
+let sidePanelOpenTabs = new Set<number>(); // Track which tabs have sidepanel open
 
 export default defineBackground(async () => {
   (async () => {
@@ -150,15 +153,14 @@ async function handleLogoutClick() {
 // Handle extension icon click
 async function handleActionClick(tab: any) {
   await fetchInitialLinks();
+
   const [url] = await Promise.all([
     getRandomUrl(),
     animateGlobeIcon(tab?.id as number),
   ]);
+
+  await handleTab(url);
   await updateCount();
-  browser.runtime.sendMessage({
-    type: "FETCH_COMMENTS",
-  });
-  handleTab(url);
 }
 
 // Handle runtime messages
@@ -186,6 +188,12 @@ async function handleMessage(
 
     case "BOOKMARK_LINK":
       handleBookmarkLink(message, sendResponse);
+      break;
+    case "GET_LIKE_STATUS":
+      handleGetLikeStatus(message, sendResponse);
+      break;
+    case "TOGGLE_LIKE":
+      handleToggleLike(message, sendResponse);
       break;
     case "LIKE_LINK":
       handleLikeLink(message, sendResponse);
@@ -308,6 +316,7 @@ const handleOpenSidePanel = (
       tabId: sender?.tab?.id as number,
       windowId: sender?.tab?.windowId,
     });
+
     sendResponse({
       success: true,
     });
@@ -371,6 +380,72 @@ const handleLikeLink = async (
   } catch (error) {
     sendResponse({
       success: false,
+    });
+  }
+};
+const handleGetLikeStatus = async (
+  message: any,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("🔍 Getting like status:", message);
+    const linkId = message?.linkId;
+
+    try {
+      // Also try to get from server
+      const res = (await makeCall(`/like?linkId=${linkId}`, {}, 10000)) as {
+        liked: boolean;
+        count: number;
+      };
+      console.log("✅ Server like status response:", res);
+      sendResponse(res);
+    } catch (serverError) {
+      console.log("⚠️ Server request failed, using local data:", serverError);
+      // Fallback to local data if server fails
+      sendResponse({
+        success: false,
+        error: (serverError as Error)?.message,
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error in handleGetLikeStatus:", error);
+    sendResponse({
+      liked: false,
+      count: 0,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+const handleToggleLike = async (
+  message: any,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("🔄 Toggling like:", message);
+    const linkId = message?.linkId;
+    const liked = message?.liked;
+
+    // Also make API call in background (don't wait for it)
+    makeCall(
+      `/like?linkId=${linkId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          liked: liked,
+        }),
+      },
+      10000
+    );
+    sendResponse({
+      success: true,
+      error: null,
+    });
+  } catch (error) {
+    console.error("❌ Error toggling like:", error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
