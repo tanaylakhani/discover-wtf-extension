@@ -8,7 +8,7 @@ type InfoTabProps = {
 
 const InfoTab = ({ activeLink, activeTab }: InfoTabProps) => {
   return (
-    <div className="flex flex-col gap-4 p-2">
+    <div className="flex flex-col gap-4 px-4 py-2">
       {activeLink?.screenshot_url && (
         <img
           className="rounded-xl border border-neutral-200"

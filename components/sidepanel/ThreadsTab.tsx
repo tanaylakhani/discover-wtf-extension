@@ -1,16 +1,28 @@
 "use client";
 import { makeCall, makeCommentsCall, PublicRandomLink } from "@/lib/utils";
+import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React from "react";
-import ThreadChatBox from "./ThreadChatBox";
+import useMeasure from "react-use-measure";
 import { ScrollArea } from "../ui/scroll-area";
-import { Loader } from "lucide-react";
+import { Skeleton } from "../ui/skeleton";
+import ThreadChatBox from "./ThreadChatBox";
+import { User } from "@/lib/graphql/user";
+import CommentCard from "./comment";
+type TCommentAuthor = {
+  id: string;
+  name: string | null | undefined;
+  username: string | null | undefined;
+  email: string;
+  avatar: string | null | undefined;
+};
 
-type Comment = {
+export type Comment = {
   linkId: string;
   id: string;
   userId: string;
   content: string;
+  user: TCommentAuthor;
   isPrivate: boolean;
   commentedAt: Date;
   media: { id: string; url: string; type: string; createdAt: Date }[] | null;
@@ -19,9 +31,15 @@ type Comment = {
 type ThreadsTabProps = {
   activeLink: PublicRandomLink | null;
   activeTab: string;
+  user: User;
+  height: number;
 };
 
-const ThreadsTab: React.FC<ThreadsTabProps> = ({ activeLink, activeTab }) => {
+const ThreadsTab: React.FC<ThreadsTabProps> = ({
+  activeLink,
+  user,
+  height,
+}) => {
   const queryClient = useQueryClient();
 
   const [input, setInput] = React.useState("");
@@ -49,9 +67,11 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({ activeLink, activeTab }) => {
     mutationFn: async ({
       files,
       message,
+      user,
     }: {
       message: string;
       files: File[];
+      user: TCommentAuthor;
     }) => {
       const params = {
         linkId: activeLink?.id as string,
@@ -60,6 +80,7 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({ activeLink, activeTab }) => {
       console.log("Posting comment with params:", stringifiedParams);
       const formData = new FormData();
       formData.append("content", message);
+      formData.append("user", JSON.stringify(user));
       if (files.length > 0) {
         formData.append("file", files[0]);
       }
@@ -73,72 +94,45 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({ activeLink, activeTab }) => {
     },
 
     // Optimistic update
-    onMutate: async ({
-      message,
-      files,
-    }: {
-      message: string;
-      files: File[];
-    }) => {
-      console.log("🚀 onMutate called with:", { message, files });
+    onMutate: async ({ message, files, user }) => {
+      setInput("");
+      setFiles([]);
 
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({
-        queryKey: ["get-comments", activeLink?.id],
+        queryKey: ["get-comments", activeLink?.id as string],
       });
-
-      // Snapshot the previous value
       const previousComments = queryClient.getQueryData<Comment[]>([
         "get-comments",
         activeLink?.id,
       ]);
 
-      console.log("📸 Previous comments:", previousComments);
-
-      // Create optimistic comment
       const optimisticComment: Comment = {
-        id: `temp-${Date.now()}`, // Temporary ID
+        id: `temp-${Date.now()}`,
         linkId: activeLink?.id || "",
-        userId: "current-user", // You might want to get this from auth context
+        userId: user?.id,
         content: message,
+        user: user,
         isPrivate: false,
         commentedAt: new Date(),
-        media:
-          files.length > 0
-            ? [
-                {
-                  id: `temp-${Date.now()}-${files[0]?.name}`, // Temporary ID for media
-                  url: URL.createObjectURL(files[0]), // Create a local URL for the file
-                  type: files[0]?.type.startsWith("image/") ? "image" : "video",
-                  createdAt: new Date(),
-                },
-              ]
-            : null,
+        media: files.length
+          ? [
+              {
+                id: `temp-${Date.now()}-${files[0].name}`,
+                url: URL.createObjectURL(files[0]),
+                type: files[0].type.startsWith("image/") ? "image" : "video",
+                createdAt: new Date(),
+              },
+            ]
+          : null,
       };
 
-      console.log("✨ Optimistic comment created:", optimisticComment);
-
-      // Optimistically update the cache
       queryClient.setQueryData<Comment[]>(
         ["get-comments", activeLink?.id],
-        (oldComments) => {
-          const newComments = [...(oldComments || []), optimisticComment];
-          console.log("💾 Setting new comments:", newComments);
-          return newComments;
-        }
+        (old) => [optimisticComment, ...(old || [])]
       );
 
-      // Verify the data was set
-      const updatedComments = queryClient.getQueryData<Comment[]>([
-        "get-comments",
-        activeLink?.id,
-      ]);
-      console.log("✅ Comments after update:", updatedComments);
-
-      // Return context with snapshot
-      return { previousComments, optimisticComment };
+      return { previousComments, optimisticComment, message, files };
     },
-
     // On success, replace optimistic comment with real data
     onSuccess: (newComment, variables, context) => {
       console.log("🎉 onSuccess called with:", newComment);
@@ -176,6 +170,10 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({ activeLink, activeTab }) => {
         );
         console.log("🔙 Rolled back to previous comments");
       }
+      if (context?.message || context?.files) {
+        setInput(context.message); // Repopulate input with failed message
+        setFiles(context.files); // Repopulate files with failed files
+      }
       console.error("Failed to post comment:", error);
     },
 
@@ -188,53 +186,44 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({ activeLink, activeTab }) => {
     },
   });
 
+  const [ref, bounds] = useMeasure();
+  const scrollAreaHeight = `calc(100vh - ${height + bounds?.height}px)`;
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (viewportRef.current) {
+      viewportRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, [data?.length]);
+  console.log(data?.length);
   return (
-    <div>
+    <div className="">
       {isFetchingComments ? (
-        <div className="flex items-center justify-center px-6 mt-5">
-          <Loader className="animate-spin size-6 " />
-        </div>
+        <LoadingSkeleton />
       ) : data!.length === 0 ? (
-        <div className="flex items-center justify-center px-6 mt-5">
-          <span>No Comment yet. Be the first to comment!</span>
-        </div>
+        <EmptyComments height={scrollAreaHeight} />
       ) : (
-        <div className="mb-36">
-          {data!.map((comment, index) => (
-            <div
-              key={comment.id || index} // Use comment ID as key, fallback to index
-              className="border-b w-full px-6 border-neutral-200 py-2"
-            >
-              <p className="text-sm">{comment.content}</p>
-              {comment?.media && (
-                <div className="mt-2 w-full flex gap-2">
-                  {comment.media.map((file, i) => (
-                    <div key={i} className="mt-2">
-                      {file?.type.startsWith("image") ? (
-                        <img
-                          src={file.url}
-                          alt={file.id}
-                          className="border border-neutral-200 rounded-xl  w-full h-[250px] object-cover aspect-square"
-                        />
-                      ) : (
-                        <video
-                          src={file.url}
-                          className="border border-neutral-200 rounded-xl max-w-sm w-full h-[250px] object-cover aspect-square"
-                          controls
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {comment.id.startsWith("temp-") && (
-                <span className="text-xs text-gray-500 italic">Sending...</span>
-              )}
+        <ScrollArea
+          style={{ height: scrollAreaHeight }}
+          className=" overflow-y-auto "
+        >
+          <ScrollAreaPrimitive.Viewport>
+            <div ref={viewportRef} className="mb-10">
+              {data!.map((comment, index) => (
+                <CommentCard comment={comment} key={index} />
+              ))}
             </div>
-          ))}
-        </div>
+          </ScrollAreaPrimitive.Viewport>
+          {/* </ScrollAreaPrimitive.Viewport> */}
+        </ScrollArea>
       )}
-      <div className="bottom-16 flex items-center justify-center w-full absolute ">
+      <div
+        ref={ref}
+        className="pb-2 px-2 flex items-center justify-center gap-2"
+      >
         <ThreadChatBox
           input={input}
           files={files}
@@ -243,13 +232,75 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({ activeLink, activeTab }) => {
           setInput={setInput}
           onSubmit={async (msg: string, files: File[]) => {
             try {
-              await mutateAsync({ message: msg, files });
+              await mutateAsync({
+                message: msg,
+                files,
+                user: {
+                  id: user.id,
+                  name: user.name,
+                  avatar: user.profile_image_url,
+                  email: user?.email,
+                  username: user?.username,
+                },
+              });
             } catch (error) {
               console.error("Failed to submit comment:", error);
             }
           }}
         />
       </div>
+    </div>
+  );
+};
+
+export const LoadingSkeleton = () => {
+  return (
+    <div className="flex flex-col p-2">
+      {[...Array.from({ length: 10 })].map((_, index) => (
+        <div
+          key={index}
+          className="px-2 bg-white shadow-sm pt-2 pb-4 border last:mb-24 border-neutral-200 first:mt-0 mt-2 rounded-xl"
+        >
+          <Skeleton className="border h-[160px] w-full object-cover overflow-hidden bg-neutral-200 border-neutral-200 rounded-xl" />
+          <div className="mt-2 space-y-2">
+            <Skeleton className="bg-neutral-200 flex flex-col items-start justify-center px-4 h-8 w-full" />
+            <Skeleton className="bg-neutral-200 h-6 w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const EmptyComments = ({ height }: { height: string }) => {
+  return (
+    <div
+      style={{
+        height: height,
+      }}
+      className="flex flex-col items-center justify-center px-6 "
+    >
+      <div className="relative flex  flex-col space-y-2">
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-300 via-pink-300 to-orange-300 opacity-60 blur-xl"></div>
+        {[...Array.from({ length: 3 })].map((_, index) => (
+          <div
+            key={index}
+            className="w-[280px] bg-white h-20 rounded-xl z-[2] p-4 border border-neutral-300 flex items-center justify-center"
+          >
+            <Skeleton className="size-10 rounded-full animate-none bg-neutral-200/90" />
+            <div className="flex flex-col ml-3 w-full flex-1">
+              <Skeleton className="h-4 w-3/4 animate-none bg-neutral-200/90" />
+              <Skeleton className="h-4 mt-1 w-full animate-none bg-neutral-200/90" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <span className="text-base mt-6 font-medium tracking-tight text-center">
+        No Comments Yet
+      </span>
+      <span className="mt-2 text-neutral-600 text-center  text-base">
+        Get Started by adding a comment <br /> or asking a question
+      </span>
     </div>
   );
 };

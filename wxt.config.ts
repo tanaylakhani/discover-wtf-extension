@@ -5,8 +5,16 @@ export default defineConfig({
 
   manifest: {
     action: {},
-
+    host_permissions: ["http://localhost:3001/*"],
     page_action: {},
+    commands: {
+      "trigger-action-click": {
+        suggested_key: {
+          default: "Ctrl+Shift+Y",
+        },
+        description: "Trigger extension action (same as clicking the icon)",
+      },
+    },
 
     permissions: [
       "bookmarks",

@@ -85,33 +85,37 @@ export const getRandomUrl = async (): Promise<string> => {
     unvisited = newLinks!.filter((link) => !visited.has(link.id));
   }
 
-  const randomLink = unvisited[Math.floor(Math.random() * unvisited?.length)];
+  const randomLink = unvisited[0];
   // add in the visited Set
   visited.add(randomLink?.id);
 
   // mark the link as visited in storage and db
-  markAsVisited(randomLink.id, visited);
-  await browser.storage.local.set({
+  browser.storage.local.set({
+    visitedLinkIds: [...visited],
     activeLink: randomLink,
   });
-
-  console.log({ unvisited, set: [...visited] });
+  markAsVisited(randomLink);
 
   return randomLink?.target_url;
 };
 
-const markAsVisited = async (linkId: string, visited: Set<string>) => {
-  await browser.storage.local.set({
-    visitedLinkIds: [...visited],
-  });
-  const data = await queryClient.fetchQuery({
-    queryKey: ["track-visit", linkId],
-    queryFn: () => makeCall(`/track-visit?linkId=${linkId}`),
-  });
-
-  // makeCall(`/track-visit?${stringifiedParams}`).catch((error) => {
-  //   console.error("Failed to mark link as visited in DB:", error);
-  // });
+const markAsVisited = async (link: PublicRandomLink) => {
+  try {
+    await queryClient.fetchQuery({
+      queryKey: ["track-visit", link.id],
+      queryFn: () =>
+        makeCall(`/track-visit?linkId=${link.id}`, { method: "POST" }, 10000),
+    });
+    await browser.runtime.sendMessage({
+      type: "MARK_AS_VISITED",
+      data: { linkId: link.id },
+    });
+  } catch (error) {
+    console.error(
+      "------Error marking link as visited in BACKGROUND SCRIPT-------:",
+      error
+    );
+  }
 };
 
 export const updateCount = async () => {
@@ -179,6 +183,38 @@ export type PublicRandomLink = {
   screenshot_url: string;
   created_at: string; // ISO timestamp
   __typename: "PublicRandomLink";
+};
+
+export type TUser = {
+  description?: string | null;
+  email: string;
+  id: string;
+  is_notification_enabled: boolean;
+  job_title?: string | null;
+  name?: string | null;
+  phone?: string;
+  profile_image_url?: string | null;
+  cover_image_url?: string | null;
+  unconfirmed_email?: string | null;
+  unique_identity_id: string;
+  username?: string | null;
+  tags: string[];
+  slug: string;
+  default_repository: {
+    name: string;
+    id: string;
+  };
+  ai_tokens: Array<{
+    ai_preferred_model: string;
+    ai_provider: string;
+    id: string;
+    token: string;
+  }>;
+
+  is_lifetime_customer: boolean;
+  is_paying_customer: boolean;
+  plan_type: string;
+  can_use_stacks_ai: boolean;
 };
 
 export type GetLinksPayload = {

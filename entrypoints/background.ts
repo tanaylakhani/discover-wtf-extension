@@ -51,6 +51,29 @@ export default defineBackground(async () => {
   });
   browser.tabs.onRemoved.addListener(handleTabRemoval);
   browser.tabs.onUpdated.addListener(handleTabUpdate);
+  browser.windows.onRemoved.addListener(async (windowId) => {
+    if (windowId === extensionWindowId) {
+      await browser.storage.local.remove("extensionTabId");
+      extensionTabId = null;
+      extensionWindowId = null;
+      console.log("Extension window closed, cleared tracking");
+    }
+  });
+
+  // Listen for keyboard command and trigger the same logic as clicking the extension icon
+  browser.commands.onCommand.addListener(async (command) => {
+    if (command === "trigger-action-click") {
+      // Simulate clicking the extension icon
+      // Get the current active tab
+      const [tab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (tab) {
+        await handleActionClick(tab);
+      }
+    }
+  });
 });
 
 async function initializeContextMenus() {
@@ -117,7 +140,7 @@ function handleLoginClick() {
   });
 }
 
-async function handleLogoutClick() {
+export async function handleLogoutClick() {
   try {
     // console.log('🔓 Starting logout process...');
 
@@ -185,6 +208,12 @@ async function handleMessage(
     case "SET_GQL_TOKEN":
       handleSetGQLToken(message, sendResponse);
       break;
+    case "FETCH_API_DATA":
+      handleFetchApiData(message, sender, sendResponse);
+      break;
+    case "MARK_LINK_AS_VISITED":
+      handleMarkLinkAsVisited(message, sender, sendResponse);
+      break;
 
     case "BOOKMARK_LINK":
       handleBookmarkLink(message, sendResponse);
@@ -192,8 +221,14 @@ async function handleMessage(
     case "GET_LIKE_STATUS":
       handleGetLikeStatus(message, sendResponse);
       break;
+    case "GET_BOOKMARK_STATUS":
+      handleGetBookmarkStatus(message, sendResponse);
+      break;
     case "TOGGLE_LIKE":
       handleToggleLike(message, sendResponse);
+      break;
+    case "TOGGLE_BOOKMARK":
+      handleToggleBookmark(message, sendResponse);
       break;
     case "LIKE_LINK":
       handleLikeLink(message, sendResponse);
@@ -206,24 +241,32 @@ async function handleTab(url: string) {
     const data = await browser.storage.local.get("extensionTabId");
     // Update already existing tab opened previously by extension
     if (data?.extensionTabId !== undefined) {
-      await browser.tabs.update(data?.extensionTabId, { url, active: true });
-      const updatedTab = await browser.tabs.get(data?.extensionTabId);
-      await browser.windows.update(updatedTab.windowId, { focused: true });
-      extensionTabId = data?.extensionTabId;
-      extensionWindowId = updatedTab.windowId;
-      return;
+      try {
+        await browser.tabs.update(data?.extensionTabId, { url, active: true });
+        const updatedTab = await browser.tabs.get(data?.extensionTabId);
+        await browser.windows.update(updatedTab.windowId, { focused: true });
+        extensionTabId = data?.extensionTabId;
+        extensionWindowId = updatedTab.windowId;
+        return;
+      } catch (e: any) {
+        // If the tab doesn't exist, fall through to create a new one
+        if (e && e.message && e.message.includes("No tab with id")) {
+          console.warn("Tab not found, creating a new one.");
+        } else {
+          throw e;
+        }
+      }
     }
-    //  Create New Tab if not tab was created by extension earlier
+    //  Create New Tab if not tab was created by extension earlier or if old one is gone
     const createdTab = await browser.tabs.create({
       active: true,
       url,
     });
-
     await browser.storage.local.set({ extensionTabId: createdTab.id });
     extensionTabId = createdTab.id || null;
     extensionWindowId = createdTab.windowId || null;
   } catch (e) {
-    console.log("Error updating existing tab:", e);
+    console.log("Error updating or creating tab:", e);
   }
 }
 
@@ -264,46 +307,6 @@ async function handleTabUpdate(
     }
   }
 }
-
-// Update extension tab history
-// async function updateExtensionTabHistory(url: string, tab: any) {
-//   const data = await browser.storage.local.get("extensionTabHistory");
-//   let extensionTabHistory = data.extensionTabHistory || [];
-
-//   const historyEntry = {
-//     url: url,
-//     timestamp: Date.now(),
-//     title: tab.title || "",
-//   };
-
-//   if (
-//     extensionTabHistory.length === 0 ||
-//     extensionTabHistory[extensionTabHistory.length - 1].url !== url
-//   ) {
-//     extensionTabHistory.push(historyEntry);
-
-//     if (extensionTabHistory.length > 100) {
-//       extensionTabHistory = extensionTabHistory.slice(
-//         extensionTabHistory.length - 100
-//       );
-//     }
-
-//     const currentCount = await browser.storage.local.get("urlVisitCount");
-//     const newCount = (currentCount.urlVisitCount || 0) + 1;
-
-//     await browser.storage.local.set({
-//       extensionTabHistory,
-//       urlVisitCount: newCount,
-//     });
-
-//     extensionTabId = tab.id || null;
-//     extensionWindowId = tab.windowId || null;
-
-//     console.log(`Extension tab visited: ${url}`);
-//     console.log(`Extension tab history length: ${extensionTabHistory.length}`);
-//     console.log(`Total URLs visited: ${newCount}`);
-//   }
-// }
 
 const handleOpenSidePanel = (
   sender: Browser.runtime.MessageSender,
@@ -416,6 +419,45 @@ const handleGetLikeStatus = async (
     });
   }
 };
+const handleGetBookmarkStatus = async (
+  message: any,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("🔍 Getting bookmark status:", message);
+    const linkId = message?.linkId;
+
+    try {
+      // Also try to get from server
+      const res = (await makeCall(`/bookmark?linkId=${linkId}`, {}, 10000)) as {
+        data: { bookmarked: boolean };
+      };
+      console.log(
+        "handleGetBookmarkStatus:✅ Server bookmark status response:",
+        res?.data
+      );
+      sendResponse(res?.data);
+    } catch (serverError) {
+      console.log(
+        "handleGetBookmarkStatus:⚠️ Server request failed, using local data:",
+        serverError
+      );
+      // Fallback to local data if server fails
+      sendResponse({
+        bookmarked: false,
+        success: false,
+        error: (serverError as Error)?.message,
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error in handleGetBookmarkStatus:", error);
+    sendResponse({
+      success: false,
+      bookmarked: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
 
 const handleToggleLike = async (
   message: any,
@@ -433,6 +475,38 @@ const handleToggleLike = async (
         method: "POST",
         body: JSON.stringify({
           liked: liked,
+        }),
+      },
+      10000
+    );
+    sendResponse({
+      success: true,
+      error: null,
+    });
+  } catch (error) {
+    console.error("❌ Error toggling like:", error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+const handleToggleBookmark = async (
+  message: any,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("🔄 Toggling bookmark:", message);
+    const linkId = message?.linkId;
+    const bookmarked = message?.bookmarked;
+
+    // Also make API call in background (don't wait for it)
+    makeCall(
+      `/bookmark?linkId=${linkId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          bookmarked: bookmarked,
         }),
       },
       10000
@@ -487,6 +561,91 @@ const handleSetGQLToken = async (
   } catch (error) {
     sendResponse({
       success: false,
+    });
+  }
+};
+
+const handleFetchApiData = async (
+  message: any,
+  sender: Browser.runtime.MessageSender,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    const { endpoint, options = {} } = message.payload;
+
+    // Validate endpoint
+    if (!endpoint) {
+      sendResponse({
+        success: false,
+        error: "Endpoint is required",
+      });
+      return;
+    }
+
+    // Construct full URL - assuming your Next.js API is running on localhost:3001
+    const apiUrl = `http://localhost:3001/api/links${endpoint}`;
+
+    // Get auth token from storage if available
+    const { gqlToken } = await browser.storage.local.get("gqlToken");
+    // Default headers
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${gqlToken}`,
+      ...options.headers,
+    };
+
+    // Fetch data from Next.js API route
+    const response = await fetch(apiUrl, {
+      method: options.method || "GET",
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    sendResponse({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Error fetching API data:", error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    });
+  }
+};
+
+const handleMarkLinkAsVisited = async (
+  message: any,
+  sender: Browser.runtime.MessageSender,
+  sendResponse: (response?: any) => void
+) => {
+  try {
+    console.log("🌱 Marking link as visited:", message);
+    const linkId = message?.data?.linkId;
+
+    // Also make API call in background (don't wait for it)
+    makeCall(
+      `/mark-visited?linkId=${linkId}`,
+      {
+        method: "POST",
+      },
+      10000
+    );
+    sendResponse({
+      success: true,
+      error: null,
+    });
+  } catch (error) {
+    console.error("❌ Error marking link as visited:", error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };

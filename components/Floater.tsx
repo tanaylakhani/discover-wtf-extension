@@ -2,9 +2,8 @@ import rabbit from "@/assets/rabbit-hole-icon.gif";
 import spiral from "@/assets/spiral.png";
 import "@/entrypoints/style.css";
 import { useLike } from "@/hooks/useLike";
-import { LinkItem } from "@/lib/graphql/links";
-import queryClient from "@/lib/query-client";
-import { cn, makeCall, PublicRandomLink } from "@/lib/utils";
+import { cn, PublicRandomLink } from "@/lib/utils";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AnnotationDots,
   Bookmark,
@@ -35,9 +34,94 @@ const Floater: React.FC<FloaterProps> = ({
 }) => {
   const [count, setCount] = useState(urlVisitCount || 0);
   const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(link);
-  const { likeQuery, toggleLike } = useLike(link?.id as string);
-  const likeData = likeQuery?.data;
-  console.log({ data: likeData });
+  const {
+    liked,
+    toggleLike,
+    count: likeCount,
+    pending: isLikePending,
+  } = useLike(link?.id as string);
+  const {
+    bookmarkQuery,
+    toggleBookmark,
+    pending: isBookmarkPending,
+  } = useBookmark(link?.id as string);
+  const bookmarkData = bookmarkQuery?.data;
+
+  const queryClient = useQueryClient();
+  const addToHistory = useMutation({
+    mutationFn: async () => {
+      // Fetch the latest activeLink from local storage
+      const { activeLink: latestActiveLink } = await browser.storage.local.get(
+        "activeLink"
+      );
+      if (!latestActiveLink) throw new Error("No active link found");
+      return new Promise((resolve, reject) => {
+        // Send message to background script
+        browser.runtime.sendMessage(
+          {
+            type: "MARK_LINK_AS_VISITED",
+            data: {
+              linkId: latestActiveLink.id,
+            },
+          },
+          (response) => {
+            if (browser.runtime.lastError) {
+              reject(new Error(browser.runtime.lastError.message));
+              return;
+            }
+
+            if (!response.success) {
+              reject(new Error(response.error || "Unknown error occurred"));
+              return;
+            }
+
+            resolve(response);
+          }
+        );
+      });
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({
+        queryKey: ["get-history", activeLink?.id],
+      });
+
+      console.log("Inside useHistory Mutation");
+      const previous = queryClient.getQueryData<PublicRandomLink[]>([
+        "get-history",
+        activeLink?.id,
+      ]);
+      // Fetch the latest activeLink from local storage synchronously for optimistic update
+      const { activeLink: latestActiveLink } = await browser.storage.local.get(
+        "activeLink"
+      );
+      if (latestActiveLink) {
+        console.log("Inside useHistory Mutation ", latestActiveLink);
+
+        queryClient.setQueryData<PublicRandomLink[]>(
+          ["get-history", activeLink?.id],
+          (old) => {
+            // Add to the top
+            return [latestActiveLink, ...(old || [])];
+          }
+        );
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(
+          ["get-history", activeLink?.id],
+          context.previous
+        );
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["get-history", activeLink?.id],
+      });
+    },
+  });
+
   useEffect(() => {
     const listener = (
       changes: { [key: string]: globalThis.Browser.storage.StorageChange },
@@ -49,13 +133,49 @@ const Floater: React.FC<FloaterProps> = ({
           setActiveLink(changes?.activeLink?.newValue);
         }
     };
+
     browser.storage.onChanged.addListener(listener);
     return () => {
       browser.storage.onChanged.removeListener(listener);
     };
   }, []);
 
-  const handleSidePanelOpen = async () => {
+  useEffect(() => {
+    const messageHandler = async (message: any) => {
+      console.log("Received message:", message);
+
+      switch (message.type) {
+        case "MARK_AS_VISITED": {
+          const linkId = message?.data?.linkId as string;
+          console.log("inside markAsVisited floater:", linkId);
+
+          addToHistory.mutate(undefined, {
+            onSuccess: () => {
+              console.log("✅ Successfully added to history:", linkId);
+            },
+            onError: (error: any) => {
+              console.error("❌ Error adding to history:", error);
+            },
+          });
+          break;
+        }
+      }
+    };
+
+    const listener = (message: any) => {
+      console.log("_________Inside Message Handler Floater__________");
+      messageHandler(message);
+      // no need for return true unless using sendResponse
+    };
+
+    browser.runtime.onMessage.addListener(listener);
+
+    return () => {
+      browser.runtime.onMessage.removeListener(listener);
+    };
+  }, [addToHistory, activeLink]);
+
+  const handleSidePanelOpen = async (activeTab: string) => {
     const extensionTabId = await browser.storage.local.get("extensionTabId");
     console.log("Opening side panel for tab:", extensionTabId);
     const currentTabId = await browser.runtime.sendMessage({
@@ -64,124 +184,54 @@ const Floater: React.FC<FloaterProps> = ({
     const isExtensionTab =
       extensionTabId?.extensionTabId === currentTabId?.tabId;
     console.log({ isExtensionTab });
-
+    await browser.storage.local.set({
+      activeSidePanelTab: activeTab,
+    });
     await browser.runtime
       .sendMessage({
         type: "OPEN_SIDE_PANEL",
-        // data: { tabId: currentTabId?.tabId },
       })
       .catch(console.error);
   };
 
-  // const handleBookmark = async () => {
-  //   if (!activeLink) {
-  //     console.log("No active link to bookmark");
-  //     return;
-  //   }
-  //   const linkId = activeLink?.id;
-  //   if (!linkId) {
-  //     console.log("No link ID found to bookmark");
-  //     return;
-  //   }
-
-  //   const { bookmarkedLinkIds } = await browser.storage.local.get(
-  //     "bookmarkedLinkIds"
-  //   );
-  //   const bookmarksIdSet = new Set([...(bookmarkedLinkIds || [])]);
-
-  //   const alreadyBookmarked = bookmarksIdSet.has(linkId);
-  //   if (alreadyBookmarked) {
-  //     bookmarksIdSet.delete(linkId);
-  //     setIsBookmarked(false);
-  //     console.log("Link already bookmarked, removing bookmark");
-  //   } else {
-  //     console.log("Bookmarking link ID:", linkId);
-  //     setIsBookmarked(true);
-  //     bookmarksIdSet.add(linkId);
-  //   }
-  //   setIsPending(true);
-  //   await browser.storage.local.set({
-  //     bookmarkedLinkIds: Array.from(bookmarksIdSet),
-  //   });
-  //   console.log("Stored bookmarked link IDs:", bookmarksIdSet);
-
-  //   const res = await browser.runtime.sendMessage({
-  //     type: "BOOKMARK_LINK",
-  //     data: { method: alreadyBookmarked ? "DELETE" : "POST", linkId },
-  //   });
-  //   setIsPending(false);
-  //   console.log("Bookmark response:", res);
-  // };
-  // const handleLike = async () => {
-  //   if (!activeLink) {
-  //     console.log("No active link to like");
-  //     return;
-  //   }
-  //   const linkId = activeLink?.id;
-  //   if (!linkId) {
-  //     console.log("No link ID found to bookmark");
-  //     return;
-  //   }
-
-  //   const { likedLinkIds } = await browser.storage.local.get("likedLinkIds");
-  //   const likesIdSet = new Set([...(likedLinkIds || [])]);
-
-  //   const alreadyLiked = likesIdSet.has(linkId);
-  //   if (alreadyLiked) {
-  //     likesIdSet.delete(linkId);
-  //     setIsLiked(false);
-  //     console.log("Link already liked, removing like");
-  //   } else {
-  //     console.log("Liking link ID:", linkId);
-  //     setIsLiked(true);
-  //     likesIdSet.add(linkId);
-  //   }
-  //   setIsPending(true);
-  //   await browser.storage.local.set({
-  //     likedLinkIds: Array.from(likesIdSet),
-  //   });
-  //   console.log("Stored liked link IDs:", likesIdSet);
-
-  //   const res = await browser.runtime.sendMessage({
-  //     type: "LIKE_LINK",
-  //     data: { method: alreadyLiked ? "DELETE" : "POST", linkId },
-  //   });
-  //   setIsPending(false);
-  //   console.log("Like response:", res);
-  // };
-  // console.log(isBookmarked);
-
   const options = [
     {
       handleClick: async () => {
-        toggleLike(!likeQuery?.data?.liked);
+        toggleLike(!liked);
       },
       name: "Like",
       icon: HeartRounded,
-      fill: likeData?.liked ? "black" : "none",
+      disabled: isLikePending,
+
+      fill: liked ? "black" : "none",
     },
     {
       handleClick: async () => {
-        await handleSidePanelOpen();
+        await handleSidePanelOpen("comments");
       },
+      disabled: false,
+
       name: "Comment",
       icon: AnnotationDots,
       fill: "none",
     },
     {
-      handleClick: () => {},
+      handleClick: async () => {
+        await handleSidePanelOpen("ask");
+      },
       name: "Ask AI",
       icon: MagicWand01,
       fill: "none",
+      disabled: false,
     },
     {
       handleClick: async () => {
-        // await handleBookmark();
+        toggleBookmark(!bookmarkData?.bookmarked);
       },
       name: "Save",
       icon: Bookmark,
-      // fill: isBookmarked ? "black" : "none",
-      fill: "none",
+      disabled: isBookmarkPending,
+      fill: bookmarkData?.bookmarked ? "black" : "none",
     },
     // {name:"Share", icon: <Share/>},
   ];
@@ -208,15 +258,21 @@ const Floater: React.FC<FloaterProps> = ({
       },
     },
   };
-
   const itemVariants = {
     open: { opacity: 1, y: 0, scale: 1 },
     closed: { opacity: 0, y: 10, scale: 0.95 },
   };
+
+  const { data: userData, isLoading } = useApiData(
+    ["get-current-user"],
+    "/user"
+  );
+  console.log({ userData });
+
   return (
     <>
       {" "}
-      <div className={cn("fixed top-32 flex flex-col items-end right-2 ")}>
+      <div className={cn("fixed top-32 flex flex-col items-end right-0 ")}>
         <motion.div className="w-fit gap-x-2 flex items-center justify-center">
           <AnimatePresence>
             {inRabbitHole && (
@@ -226,7 +282,7 @@ const Floater: React.FC<FloaterProps> = ({
                 exit={{ opacity: 0, x: "100%" }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
                 className={
-                  "bg-indigo-700 text-white h-14 w-fit px-8  rounded-full flex items-center justify-center "
+                  "bg-indigo-700 text-white h-12 w-fit px-6  rounded-full flex items-center justify-center "
                 }
                 // onClick={() => {
                 //   setIsInRabbitHole(true);
@@ -255,23 +311,25 @@ const Floater: React.FC<FloaterProps> = ({
             )}
           </AnimatePresence>
           <div
-            title="Discover Count"
+            id="discover-count"
             className={
-              "bg-black h-14 w-fit px-8  rounded-full flex items-center justify-center "
+              "bg-neutral-100 border border-neutral-200 h-12 w-fit py-1 pl-1 rounded-l-full flex items-center justify-center"
             }
-            // className="bg-neutral-50 border border-neutral-200  mb-4 size-10 font-medium flex items-center justify-center rounded-l-full text-neutral-900"
           >
-            <span className="text-neutral-200 text-sm font-semibold mr-1">
-              Discover Count:
-            </span>
-            <span className="font-semibold text-sm tracking-tight text-white">
-              {count}
-            </span>
+            <div className="bg-white w-full border border-neutral-200 rounded-l-full h-full pl-6 pr-4 flex items-center justify-center ">
+              <span className="text-neutral-800 text-sm font-semibold mr-1">
+                Discover Count:
+              </span>
+              <span className="font-semibold text-sm tracking-tight text-neutral-800">
+                {count}
+              </span>
+            </div>
           </div>
         </motion.div>
         <motion.div
+          id="source"
           className={
-            "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[50%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
+            "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[65%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
           }
           // className="bg-neutral-50 border border-neutral-200  mb-4 size-10 font-medium flex items-center justify-center rounded-l-full text-neutral-900"
         >
@@ -338,7 +396,7 @@ const Floater: React.FC<FloaterProps> = ({
         <AnimatePresence>
           {isOpen && (
             <motion.div
-              className=" flex flex-col items-center "
+              className=" flex flex-col pt-2 items-center "
               initial="closed"
               animate="open"
               exit="closed"
@@ -349,8 +407,8 @@ const Floater: React.FC<FloaterProps> = ({
                   key={index}
                   variants={itemVariants}
                   onClick={option.handleClick}
-                  // disabled={isPending}
-                  className="p-2 size-14 rounded-full flex items-center justify-center relative group "
+                  disabled={option?.disabled}
+                  className="p-2 size-12 rounded-full flex items-center justify-center relative group "
                 >
                   {/* Tooltip */}
                   <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
@@ -359,9 +417,9 @@ const Floater: React.FC<FloaterProps> = ({
 
                   {/* Badge on first item */}
                   {index === 0 && (
-                    <div className="p-1.5 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 bg-white">
+                    <div className="p-1 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 aspect-square size-6 bg-white">
                       <span className="text-xs font-semibold">
-                        {Number(likeData?.count) || 0}
+                        {Number(likeCount)}
                       </span>
                     </div>
                   )}
@@ -384,74 +442,85 @@ const Floater: React.FC<FloaterProps> = ({
         {/* Toggle Button */}
         <motion.button
           onClick={() => setIsOpen((prev) => !prev)}
-          className="size-14 rounded-full flex items-center justify-center"
+          className="size-12 rounded-full flex items-center justify-center"
           animate={{ rotate: isOpen ? 45 : 0 }}
           transition={{ duration: 0.5 }}
         >
           <Plus className="size-6" />
         </motion.button>
       </div>
-      {/* <motion.div
-        transition={{ duration: 0.3 }}
-        style={{ borderRadius: isOpen ? "1.5rem" : "9999px" }}
-        className={cn(
-          "left-2 bg-white p-2 fixed bottom-20 ",
-          !isOpen && "size-14"
-        )}
-      >
-        <motion.div
-          layout
-          className="w-full overflow-hidden"
-          animate={{ height: isOpen ? 200 : 0 }}
-          transition={{ duration: 0.3 }}
-        />
-        <button
-          onClick={() => setIsOpen((prev) => !prev)}
-          className="size-14"
-          style={{
-            transform: isOpen ? "rotate(45deg)" : "rotate(0deg)",
-          }}
-        >
-          <Plus
-            style={{
-              stroke: "black",
-            }}
-            className=" size-6"
-          />
-        </button>
-      </motion.div> */}
-      {/* <Button
-        title="Logout"
-        className="bg-neutral-100 fixed right-2  border border-neutral-200  mt-2 size-10 font-medium flex items-center justify-center rounded-full "
-        onClick={async () => {
-          await logout();
-        }}
-      >
-        <LogOut03 stroke="black" className="size-6 stroke-black  " />
-      </Button> */}
-      {/* <button
-          className="size-5 "
-          onClick={() => setShowSidebar((prev) => !prev)}
-        >
-          <svg
-            width="100%"
-            height="100%"
-            viewBox="0 0 24 24"
-            fill="none"
-            strokeWidth={0.8}
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M15 3V21M7.8 3H16.2C17.8802 3 18.7202 3 19.362 3.32698C19.9265 3.6146 20.3854 4.07354 20.673 4.63803C21 5.27976 21 6.11984 21 7.8V16.2C21 17.8802 21 18.7202 20.673 19.362C20.3854 19.9265 19.9265 20.3854 19.362 20.673C18.7202 21 17.8802 21 16.2 21H7.8C6.11984 21 5.27976 21 4.63803 20.673C4.07354 20.3854 3.6146 19.9265 3.32698 19.362C3 18.7202 3 17.8802 3 16.2V7.8C3 6.11984 3 5.27976 3.32698 4.63803C3.6146 4.07354 4.07354 3.6146 4.63803 3.32698C5.27976 3 6.11984 3 7.8 3Z"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button> */}
     </>
   );
 };
 
 export default Floater;
+//  <AnimatePresence>
+//    {isSidebarOpen && (
+//      <motion.div
+//        key="sidebar"
+//        initial={{ x: "100%" }}
+//        animate={{ x: 0 }}
+//        exit={{ x: "100%" }}
+//        className="fixed top-2 h-[98vh] z-50 max-w-xl w-full bottom-2 right-2"
+//        transition={{ duration: 0.3, ease: "easeInOut" }}
+//      >
+//        <div className=" h-full p-1 w-full  bg-neutral-100 border border-neutral-200 shadow-xl rounded-2xl overflow-hidden">
+//          <div className="h-full w-full  bg-white border border-neutral-200 rounded-2xl overflow-hidden">
+//            <div className="w-full flex px-6 pt-3 py-1 items-center justify-between">
+//              <div
+//                onClick={() => setIsSidebarOpen(false)}
+//                className="group group:bg-neutral-100 rounded-lg flex items-center justify-center"
+//              >
+//                <LayoutLeft className="size-5 group-hover:stroke-black stroke-neutral-700" />
+//              </div>
+//              {isLoading ? (
+//                <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
+//              ) : (
+//                <img
+//                  src={userData?.data?.profile_image_url}
+//                  alt="Profile"
+//                  className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
+//                />
+//              )}
+//            </div>
+//            <div className="px-2 w-full flex flex-row mt-2 items-center justify-center  border-b border-neutral-200 ">
+//              {Object.keys(tabs).map((tab) => {
+//                const icon = tabsIcon[tab as keyof typeof tabsIcon];
+//                return (
+//                  <div
+//                    key={tab}
+//                    className={cn(
+//                      "cursor-pointer flex-1 w-full py-3 mx-2 px-2 flex relative items-center justify-center"
+//                    )}
+//                    onClick={() => setActiveTab(tab as keyof typeof tabs)}
+//                  >
+//                    {icon({
+//                      className: cn(
+//                        "size-5 ",
+//                        activeTab === tab ? "text-black" : "text-neutral-700"
+//                      ),
+//                    })}
+//                    <span
+//                      className={cn(
+//                        "ml-2 font-medium tracking-tight",
+//                        activeTab === tab ? "text-black" : "text-neutral-700"
+//                      )}
+//                    >
+//                      {capitalizeFirstLetter(tab)}
+//                    </span>
+//                    {activeTab === tab && (
+//                      <motion.div
+//                        layoutId="underline"
+//                        className="absolute left-0 inset-x-0 -bottom-[1.5px] h-0.5 bg-black rounded-full"
+//                      />
+//                    )}
+//                  </div>
+//                );
+//              })}
+//            </div>
+//            <div>{tabs[activeTab]}</div>
+//          </div>
+//        </div>
+//      </motion.div>
+//    )}
+//  </AnimatePresence>;

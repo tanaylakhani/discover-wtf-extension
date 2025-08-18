@@ -1,27 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 
 async function bgFetch<T>(
   type: string,
   payload: Record<string, any>
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    console.log("📤 Sending message:", { type, ...payload });
-
     browser.runtime.sendMessage({ type, ...payload }, (response) => {
-      console.log("📥 Received response:", response);
-
       if (browser.runtime.lastError) {
-        console.error("❌ Runtime error:", browser.runtime.lastError);
         reject(new Error(browser.runtime.lastError.message));
         return;
       }
-
       if (response?.error) {
-        console.error("❌ Response error:", response.error);
         reject(new Error(response.error));
         return;
       }
-
       resolve(response);
     });
   });
@@ -29,59 +22,31 @@ async function bgFetch<T>(
 
 export function useLike(linkId: string) {
   const queryClient = useQueryClient();
+  const [pending, setPending] = useState(false);
+  const lastAction = useRef<null | boolean>(null);
 
   const likeQuery = useQuery({
     queryKey: ["like-status", linkId],
     queryFn: async () => {
-      console.log("🔍 Fetching like status for linkId:", linkId);
-      try {
-        const result = await bgFetch<{
-          data: { liked: boolean; count: number };
-        }>("GET_LIKE_STATUS", {
-          linkId,
-        });
-        console.log("✅ Like status result:", result);
-        return result?.data;
-      } catch (error) {
-        console.error("❌ Error fetching like status:", error);
-        throw error;
-      }
+      const result = await bgFetch<{
+        data: { liked: boolean; count: number };
+      }>("GET_LIKE_STATUS", { linkId });
+      return result?.data;
     },
-    // enabled: !!linkId, // Only run if linkId exists
-    // retry: 2, // Retry failed requests
-    // staleTime: 30000, // Cache for 30 seconds
-  });
-
-  console.log("📊 Like query state:", {
-    status: likeQuery.status,
-    data: likeQuery.data,
-    error: likeQuery.error,
-    isPending: likeQuery.isPending,
-    isError: likeQuery.isError,
-    linkId,
   });
 
   const toggleLikeMutation = useMutation({
     mutationFn: async (liked: boolean) => {
-      console.log("🔍 Fetching like status for linkId:", linkId);
-      try {
-        const result = await bgFetch<{ success: boolean; error: number }>(
-          "TOGGLE_LIKE",
-          {
-            linkId,
-            liked,
-          }
-        );
-        return result;
-      } catch (error) {
-        console.error("❌ Error fetching like status:", error);
-        throw error;
-      }
+      setPending(true);
+      lastAction.current = liked;
+      return bgFetch<{
+        success: boolean;
+        error?: string;
+        data?: { liked: boolean; count: number };
+      }>("TOGGLE_LIKE", { linkId, liked });
     },
     onMutate: async (liked: boolean) => {
-      await queryClient.cancelQueries({
-        queryKey: ["like-status", linkId],
-      });
+      await queryClient.cancelQueries({ queryKey: ["like-status", linkId] });
 
       const previous = queryClient.getQueryData<{
         liked: boolean;
@@ -91,7 +56,7 @@ export function useLike(linkId: string) {
       if (previous) {
         queryClient.setQueryData(["like-status", linkId], {
           liked,
-          count: previous.count + (liked ? 1 : -1),
+          count: liked ? previous.count + 1 : previous.count - 1,
         });
       }
 
@@ -102,10 +67,26 @@ export function useLike(linkId: string) {
         queryClient.setQueryData(["like-status", linkId], context.previous);
       }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["like-status", linkId] });
+    onSuccess: (result, liked, context) => {
+      // ⬅ Change: Merge server response with optimistic state to avoid snap-back
+      const optimistic = queryClient.getQueryData(["like-status", linkId]);
+      queryClient.setQueryData(["like-status", linkId], {
+        ...(optimistic || {}),
+        ...(result?.data || {}),
+      });
     },
   });
 
-  return { likeQuery, toggleLike: toggleLikeMutation.mutate };
+  const safeToggleLike = (liked: boolean) => {
+    if (pending && lastAction.current === liked) return;
+    toggleLikeMutation.mutate(liked);
+  };
+
+  return {
+    liked: likeQuery.data?.liked ?? false,
+    count: likeQuery.data?.count ?? 0,
+    toggleLike: safeToggleLike,
+    pending: pending || toggleLikeMutation.isPending,
+    isLoading: likeQuery.isPending,
+  };
 }
