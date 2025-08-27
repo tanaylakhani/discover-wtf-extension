@@ -3,6 +3,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .font-instrument {
+    font-family: "Instrument Serif", serif;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

@@ -2,35 +2,12 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { links } from "./data";
 import queryClient from "./query-client";
+import BaseURL from "./url";
 
 let urls: string[] = [...links];
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
-}
-
-export async function authenticateUser() {
-  try {
-    const responseUrl = await browser.identity.launchWebAuthFlow({
-      interactive: true,
-      url: getAuthUrl(),
-    });
-    if (!responseUrl) {
-      throw new Error("No response URL returned from launchWebAuthFlow");
-    }
-    // Parse access_token from responseUrl
-    const m = responseUrl.match(/[#&]access_token=([^&]*)/);
-    const token = m && m[1];
-    if (token) {
-      browser.storage.local.set({ authToken: token });
-      return token;
-    } else {
-      throw new Error("No access token found in response");
-    }
-  } catch (e) {
-    console.error("Auth error:", e);
-    return null;
-  }
 }
 
 export async function animateGlobeIcon(tabId: number) {
@@ -39,6 +16,10 @@ export async function animateGlobeIcon(tabId: number) {
     browser.action.setIcon({ path: `/animate/globe${i}.png`, tabId: tabId });
   }
 }
+
+export const getFirstName = (name: string) => {
+  return name?.split(" ")[0];
+};
 
 export const openSidePanel = async () => {
   try {
@@ -144,7 +125,7 @@ export const makeCall = async (
     throw new Error("No GraphQL token found");
   }
   try {
-    const response = await fetch(`http://localhost:3001/api/links${endpoint}`, {
+    const response = await fetch(`${BaseURL}/api/links${endpoint}`, {
       ...options,
       signal: controller.signal,
       headers: {
@@ -234,13 +215,13 @@ export const fetchInitialLinks = async () => {
     try {
       const response = await makeCall("/random", {}, 10000);
       console.log({ response });
-      if (response?.random_links) {
+      if (response?.data?.random_links) {
         await browser.storage.local.set({
-          links: response.random_links,
+          links: response.data.random_links,
           currentPage: 1,
         });
         console.log("Links fetched and stored successfully");
-        return response.random_links as PublicRandomLink[];
+        return response.data.random_links as PublicRandomLink[];
       } else {
         console.error("No links found in response");
       }
@@ -259,7 +240,7 @@ const fetchNextPage = async (currentPage: number) => {
   // const stringifiedParams = new URLSearchParams(params).toString();
 
   const response = await makeCall("/random", {}, 10000);
-  const newLinks = response?.random_links as PublicRandomLink[];
+  const newLinks = response?.data?.random_links as PublicRandomLink[];
 
   // If next page has no links then user has visited all links
   if (!newLinks || newLinks.length === 0) {
@@ -336,20 +317,6 @@ export async function getGoogleUser() {
   return await res.json();
 }
 
-export const getAuthUrl = () => {
-  const clientId =
-    "749325556750-7vhqt1hskpg7k2229vqiakc7nbgfbv8t.apps.googleusercontent.com";
-  const redirectUri = `https://${browser.runtime.id}.chromiumapp.org/`;
-  const scopes = ["email", "profile"];
-  const authUrl =
-    `https://accounts.google.com/o/oauth2/auth?` +
-    `client_id=${clientId}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&response_type=token` +
-    `&scope=${encodeURIComponent(scopes.join(" "))}`;
-  return authUrl;
-};
-
 export function hasDiscoverHistoryParam(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -367,7 +334,7 @@ export const makeCommentsCall = async (
   if (!token?.gqlToken) {
     throw new Error("No GraphQL token found");
   }
-  const response = await fetch(`http://localhost:3001/api/links${endpoint}`, {
+  const response = await fetch(`${BaseURL}/api/links${endpoint}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token.gqlToken}`,
