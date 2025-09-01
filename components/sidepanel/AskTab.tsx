@@ -15,6 +15,7 @@ import {
 import { Response } from "../ai-elements/response";
 import { ScrollArea } from "../ui/scroll-area";
 import { Conversation, ConversationContent } from "../ai-elements/conversation";
+import URL from "@/lib/url";
 type AskTabProps = {
   activeTab: string;
   activeLink: PublicRandomLink | null;
@@ -26,7 +27,7 @@ const AskTab = ({ user, height }: AskTabProps) => {
   const [input, setInput] = useState("");
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
-      api: "http://localhost:3001/api/chat",
+      api: `${URL}/api/chat`,
     }),
   });
 
@@ -75,7 +76,7 @@ const AskTab = ({ user, height }: AskTabProps) => {
                 className="mx-auto flex w-full flex-col items-center justify-center py-20"
               >
                 <h3 className="text-2xl font-medium tracking-tight">
-                  Hi, {user.name?.split(" ")[0]}
+                  Hi, {user?.name?.split(" ")[0]}
                 </h3>
                 <span className="text-lg font-medium tracking-tight text-neutral-500">
                   How can I assist you today?

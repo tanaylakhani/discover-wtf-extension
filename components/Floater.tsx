@@ -263,12 +263,6 @@ const Floater: React.FC<FloaterProps> = ({
     closed: { opacity: 0, y: 10, scale: 0.95 },
   };
 
-  const { data: userData, isLoading } = useApiData(
-    ["get-current-user"],
-    "/user"
-  );
-  console.log({ userData });
-
   return (
     <>
       {" "}
@@ -310,21 +304,23 @@ const Floater: React.FC<FloaterProps> = ({
               </motion.div>
             )}
           </AnimatePresence>
+          {/* <div
+            className={
+              " h-12 w-fit py-1 pl-1 rounded-l-full flex items-center justify-center"
+            }
+          > */}
           <div
             id="discover-count"
-            className={
-              "bg-neutral-100 border border-neutral-200 h-12 w-fit py-1 pl-1 rounded-l-full flex items-center justify-center"
-            }
+            className="bg-purple-500 w-full rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center "
           >
-            <div className="bg-white w-full border border-neutral-200 rounded-l-full h-full pl-6 pr-4 flex items-center justify-center ">
-              <span className="text-neutral-800 text-sm font-semibold mr-1">
-                Discover Count:
-              </span>
-              <span className="font-semibold text-sm tracking-tight text-neutral-800">
-                {count}
-              </span>
-            </div>
+            <span className="text-neutral-200 text-sm font-semibold mr-1">
+              Discover Count:
+            </span>
+            <span className="font-semibold text-sm tracking-tight text-white">
+              {count}
+            </span>
           </div>
+          {/* </div> */}
         </motion.div>
         <motion.div
           id="source"
@@ -363,35 +359,6 @@ const Floater: React.FC<FloaterProps> = ({
           </AnimatePresence>
         </motion.div>
       </div>
-      {/* <motion.div className="h-fit fixed bottom-20  right-4  px-2 py-2.5  rounded-lg flex flex-col items-center  justify-center gap-y-4 transition-all duration-200 cursor-pointer">
-        {options.map((option, index) => (
-          <button
-            key={index}
-            onClick={option.handleClick}
-            className=" p-2 size-14 rounded-full flex items-center justify-center relative group border border-neutral-200 bg-neutral-100"
-            // title={option?.name}
-            disabled={isPending}
-          >
-            <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75   font-medium px-2 py-1 rounded-lg">
-              {option.name}
-            </div>
-
-            {index === 0 && (
-              <div className="p-1.5 rounded-full border border-neutral-200  absolute -top-2  flex items-center justify-center -right-2 bg-white ">
-                <span className="text-xs font-semibold">20</span>
-              </div>
-            )}
-            <option.icon
-              style={{
-                fill: option.fill || "none",
-                stroke: "#404040",
-                strokeWidth: 1.4,
-              }}
-              className="size-6  "
-            />
-          </button>
-        ))}
-      </motion.div> */}
       <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
         <AnimatePresence>
           {isOpen && (
@@ -428,7 +395,10 @@ const Floater: React.FC<FloaterProps> = ({
                   <option.icon
                     style={{
                       fill: option.fill || "none",
-                      stroke: "#404040",
+                      stroke:
+                        option?.fill && option.fill === "black"
+                          ? "black"
+                          : "#404040",
                       strokeWidth: 1.4,
                     }}
                     className="size-6"
@@ -454,73 +424,3 @@ const Floater: React.FC<FloaterProps> = ({
 };
 
 export default Floater;
-//  <AnimatePresence>
-//    {isSidebarOpen && (
-//      <motion.div
-//        key="sidebar"
-//        initial={{ x: "100%" }}
-//        animate={{ x: 0 }}
-//        exit={{ x: "100%" }}
-//        className="fixed top-2 h-[98vh] z-50 max-w-xl w-full bottom-2 right-2"
-//        transition={{ duration: 0.3, ease: "easeInOut" }}
-//      >
-//        <div className=" h-full p-1 w-full  bg-neutral-100 border border-neutral-200 shadow-xl rounded-2xl overflow-hidden">
-//          <div className="h-full w-full  bg-white border border-neutral-200 rounded-2xl overflow-hidden">
-//            <div className="w-full flex px-6 pt-3 py-1 items-center justify-between">
-//              <div
-//                onClick={() => setIsSidebarOpen(false)}
-//                className="group group:bg-neutral-100 rounded-lg flex items-center justify-center"
-//              >
-//                <LayoutLeft className="size-5 group-hover:stroke-black stroke-neutral-700" />
-//              </div>
-//              {isLoading ? (
-//                <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
-//              ) : (
-//                <img
-//                  src={userData?.data?.profile_image_url}
-//                  alt="Profile"
-//                  className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
-//                />
-//              )}
-//            </div>
-//            <div className="px-2 w-full flex flex-row mt-2 items-center justify-center  border-b border-neutral-200 ">
-//              {Object.keys(tabs).map((tab) => {
-//                const icon = tabsIcon[tab as keyof typeof tabsIcon];
-//                return (
-//                  <div
-//                    key={tab}
-//                    className={cn(
-//                      "cursor-pointer flex-1 w-full py-3 mx-2 px-2 flex relative items-center justify-center"
-//                    )}
-//                    onClick={() => setActiveTab(tab as keyof typeof tabs)}
-//                  >
-//                    {icon({
-//                      className: cn(
-//                        "size-5 ",
-//                        activeTab === tab ? "text-black" : "text-neutral-700"
-//                      ),
-//                    })}
-//                    <span
-//                      className={cn(
-//                        "ml-2 font-medium tracking-tight",
-//                        activeTab === tab ? "text-black" : "text-neutral-700"
-//                      )}
-//                    >
-//                      {capitalizeFirstLetter(tab)}
-//                    </span>
-//                    {activeTab === tab && (
-//                      <motion.div
-//                        layoutId="underline"
-//                        className="absolute left-0 inset-x-0 -bottom-[1.5px] h-0.5 bg-black rounded-full"
-//                      />
-//                    )}
-//                  </div>
-//                );
-//              })}
-//            </div>
-//            <div>{tabs[activeTab]}</div>
-//          </div>
-//        </div>
-//      </motion.div>
-//    )}
-//  </AnimatePresence>;

@@ -28,12 +28,12 @@ const HistoryTab = ({ activeTab, activeLink, height }: HistoryTabProps) => {
             {data!.map((item) => (
               <div
                 key={item.id}
-                className="px-2 pt-2 bg-white shadow-sm  mt-2 z-10 pb-4 border last:mb-24 border-neutral-200  rounded-xl"
+                className="px-2 pt-2 bg-white shadow-md  first:mt-3 z-10 pb-4 border last:mb-24 border-neutral-300  rounded-2xl"
               >
                 {item?.screenshot_url && (
                   <img
                     src={item?.screenshot_url}
-                    className="border h-[160px] w-full object-cover overflow-hidden border-neutral-200 rounded-xl"
+                    className="border h-[160px] w-full object-cover overflow-hidden border-neutral-300 rounded-2xl"
                     alt=""
                   />
                 )}

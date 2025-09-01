@@ -1,8 +1,7 @@
-import queryClient from "@/lib/query-client";
+import URL from "@/lib/url";
 import {
   animateGlobeIcon,
   fetchInitialLinks,
-  GetLinksPayload,
   getRandomUrl,
   hasDiscoverHistoryParam,
   isValidUrl,
@@ -583,7 +582,7 @@ const handleFetchApiData = async (
     }
 
     // Construct full URL - assuming your Next.js API is running on localhost:3001
-    const apiUrl = `http://localhost:3001/api/links${endpoint}`;
+    const apiUrl = `${URL}/api/links${endpoint}`;
 
     // Get auth token from storage if available
     const { gqlToken } = await browser.storage.local.get("gqlToken");

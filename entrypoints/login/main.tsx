@@ -2,8 +2,14 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "@/assets/global.css";
 import OnboardingContent from "./Login";
+import { QueryClientProvider } from "@tanstack/react-query";
+import queryClient from "@/lib/query-client";
 
-createReactEntrypoint(OnboardingContent);
+createReactEntrypoint(() => (
+  <QueryClientProvider client={queryClient}>
+    <OnboardingContent />
+  </QueryClientProvider>
+));
 
 function createReactEntrypoint<T extends Record<string, any> = {}>(
   Component: React.ComponentType<T>,

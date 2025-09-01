@@ -68,7 +68,7 @@ export default defineContentScript({
             const wrapper = document.createElement("div");
             wrapper.id = "floater-wrapper";
             wrapper.style.zIndex = "2147483647";
-            
+
             container.append(wrapper);
 
             const root = ReactDOM.createRoot(wrapper);
