@@ -73,6 +73,7 @@ interface PersonaIdentityData {
     };
   };
 }
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000; // 604800000
 
 // Phase 2 interfaces
 interface PersonaContentData {
@@ -360,7 +361,6 @@ export const usePersonaIdentity = (
       if (setState) {
         setState(data.identity);
       }
-      const WEEK_MS = 7 * 24 * 60 * 60 * 1000; // 604800000
       await browser.storage.local.set({
         personaIdentity: {
           data: data.identity,
@@ -387,7 +387,7 @@ export const usePersonaContentPreferences = (
   return useMutation({
     mutationFn: () => generateContentPreferencesAPI(sessionId),
     mutationKey: ["generatePersonaContentPreferences", sessionId],
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       // Invalidate and refetch any related queries
       queryClient.invalidateQueries({ queryKey: ["persona"] });
       queryClient.invalidateQueries({
@@ -396,6 +396,13 @@ export const usePersonaContentPreferences = (
       if (setState) {
         setState(data.content);
       }
+      await browser.storage.local.set({
+        personaContentPreferences: {
+          data: data?.content,
+          expiry: Date.now() + WEEK_MS,
+        },
+      });
+
       console.log(
         "Phase 2 content preferences generated and cache invalidated"
       );

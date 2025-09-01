@@ -21,6 +21,8 @@ export const getFirstName = (name: string) => {
   return name?.split(" ")[0];
 };
 
+
+
 export const openSidePanel = async () => {
   try {
     const [tab] = await browser.tabs.query({
