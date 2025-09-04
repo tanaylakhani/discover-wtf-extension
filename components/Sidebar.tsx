@@ -20,7 +20,14 @@ import {
 } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { History, Info, MessageCircle, Sparkles } from "lucide-react";
+import {
+  History,
+  Info,
+  MessageCircle,
+  PanelRightClose,
+  Sparkles,
+} from "lucide-react";
+import { convertToModelMessages, UIMessage } from "ai";
 
 const tabsIcon = {
   history: History,
@@ -41,47 +48,42 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
   const [activeTab, setActiveTab] = useState<keyof typeof tabs>("history");
 
-  // const { data, isLoading } = useQuery({
-  //   queryKey: ["get-user"],
-  //   queryFn: async () => {
-  //     const resp = await makeCall("/user", {}, 10000);
-  //     console.log({ userData: resp });
-  //     return resp?.data as TUser;
-  //   },
-  // });
+  const { data, isLoading } = useQuery({
+    queryKey: ["get-user"],
+    queryFn: async () => {
+      // Ask background script to fetch user data
+      const resp = await browser.runtime.sendMessage({ type: "GET_USER" });
+      console.log({ userData: resp });
+      return resp?.data as TUser;
+    },
+  });
 
   const tabs = {
     history: (
-      // <HistoryTab
-      //   height={bounds?.height}
-      //   activeLink={activeLink}
-      //   activeTab={activeTab}
-      // />
-      <></>
+      <HistoryTab
+        height={bounds?.height}
+        activeLink={activeLink}
+        activeTab={activeTab}
+      />
     ),
     comments: (
-      <></>
-
-      // <ThreadsTab
-      //   height={bounds?.height}
-      //   activeLink={activeLink}
-      //   user={{} as TUser}
-      //   activeTab={activeTab}
-      // />
+      <ThreadsTab
+        height={bounds?.height}
+        activeLink={activeLink}
+        user={data as TUser}
+        activeTab={activeTab}
+      />
     ),
     ask: (
-      // <AskTab
-      //   height={bounds?.height}
-      //   user={{} as TUser}
-      //   activeLink={activeLink}
-      //   activeTab={activeTab}
-      // />
-      <></>
+      <AskTab
+        height={bounds?.height}
+        user={data as TUser}
+        activeLink={activeLink}
+        activeTab={activeTab}
+      />
     ),
     // usage: <>Usage</>,
-    info: <></>,
-
-    // <InfoTab activeLink={activeLink} activeTab={activeTab} />,
+    info: <InfoTab activeLink={activeLink} activeTab={activeTab} />,
   };
 
   useEffect(() => {
@@ -142,10 +144,9 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           exit={{ x: "100%" }}
           style={{
             zIndex: 2147483647,
-            right: "8px",
-            height: "calc(100vh - 20px)",
+            right: "0px",
           }}
-          className="overflow-hidden rounded-2xl fixed top-2 bottom-2  bg-white border border-neutral-200 max-w-md w-full flex flex-col "
+          className="overflow-hidden fixed top-0 bottom-0 h-screen  bg-white border-l shadow-xl rounded-l-xl border-neutral-200 max-w-md w-full flex flex-col "
         >
           <div ref={ref} className="w-full  flex flex-col">
             <div className="w-full flex px-6 pt-3 py-1 items-center justify-between">
@@ -153,17 +154,17 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                 onClick={() => onClose()}
                 className="group group:bg-neutral-100 rounded-lg flex items-center justify-center"
               >
-                <LayoutLeft className="size-5 group-hover:stroke-black stroke-neutral-700" />
+                <PanelRightClose className="size-5 group-hover:stroke-black stroke-neutral-700" />
               </div>
-              {/* {isLoading ? (
-            <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
-          ) : (
-            <img
-              src={data?.profile_image_url!}
-              alt="Profile"
-              className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
-            />
-          )} */}
+              {isLoading ? (
+                <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
+              ) : (
+                <img
+                  src={data?.profile_image_url!}
+                  alt="Profile"
+                  className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
+                />
+              )}
             </div>
             <div className="px-2 w-full flex flex-row mt-2 items-center justify-center  border-b border-neutral-200 ">
               {Object.keys(tabs).map((tab) => {

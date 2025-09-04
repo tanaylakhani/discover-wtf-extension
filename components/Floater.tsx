@@ -265,71 +265,71 @@ const Floater: React.FC<FloaterProps> = ({
     <>
       {" "}
       <ToolbarApp />
-      <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              className=" flex flex-col pt-2 items-center "
-              initial="closed"
-              animate="open"
-              exit="closed"
-              variants={containerVariants}
-            >
-              {options.map((option, index) => (
-                <motion.button
-                  key={index}
-                  variants={itemVariants}
-                  onClick={option.handleClick}
-                  disabled={option?.disabled}
-                  className="p-2 size-12 rounded-full flex items-center justify-center relative group "
-                >
-                  {/* Tooltip */}
-                  <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
-                    {option.name}
-                  </div>
-
-                  {/* Badge on first item */}
-                  {index === 0 && (
-                    <div className="p-1 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 aspect-square size-6 bg-white">
-                      <span className="text-xs font-semibold">
-                        {Number(likeCount)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Icon */}
-                  <option.icon
-                    style={{
-                      fill: option.fill || "none",
-                      stroke:
-                        option?.fill && option.fill === "black"
-                          ? "black"
-                          : "#404040",
-                      strokeWidth: 1.4,
-                    }}
-                    className="size-6"
-                  />
-                </motion.button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Toggle Button */}
-        <motion.button
-          onClick={() => setIsOpen((prev) => !prev)}
-          className="size-12 rounded-full flex items-center justify-center"
-          animate={{ rotate: isOpen ? 45 : 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Plus className="size-6" />
-        </motion.button>
-      </div>
     </>
   );
 };
 
 export default Floater;
+      // <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
+      //   <AnimatePresence>
+      //     {isOpen && (
+      //       <motion.div
+      //         className=" flex flex-col pt-2 items-center "
+      //         initial="closed"
+      //         animate="open"
+      //         exit="closed"
+      //         variants={containerVariants}
+      //       >
+      //         {options.map((option, index) => (
+      //           <motion.button
+      //             key={index}
+      //             variants={itemVariants}
+      //             onClick={option.handleClick}
+      //             disabled={option?.disabled}
+      //             className="p-2 size-12 rounded-full flex items-center justify-center relative group "
+      //           >
+      //             {/* Tooltip */}
+      //             <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
+      //               {option.name}
+      //             </div>
+
+      //             {/* Badge on first item */}
+      //             {index === 0 && (
+      //               <div className="p-1 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 aspect-square size-6 bg-white">
+      //                 <span className="text-xs font-semibold">
+      //                   {Number(likeCount)}
+      //                 </span>
+      //               </div>
+      //             )}
+
+      //             {/* Icon */}
+      //             <option.icon
+      //               style={{
+      //                 fill: option.fill || "none",
+      //                 stroke:
+      //                   option?.fill && option.fill === "black"
+      //                     ? "black"
+      //                     : "#404040",
+      //                 strokeWidth: 1.4,
+      //               }}
+      //               className="size-6"
+      //             />
+      //           </motion.button>
+      //         ))}
+      //       </motion.div>
+      //     )}
+      //   </AnimatePresence>
+
+      //   {/* Toggle Button */}
+      //   <motion.button
+      //     onClick={() => setIsOpen((prev) => !prev)}
+      //     className="size-12 rounded-full flex items-center justify-center"
+      //     animate={{ rotate: isOpen ? 45 : 0 }}
+      //     transition={{ duration: 0.5 }}
+      //   >
+      //     <Plus className="size-6" />
+      //   </motion.button>
+      // </div>
 
 // <div className={cn("fixed top-32 flex flex-col items-end right-0 ")}>
 //   <motion.div className="w-fit gap-x-2 flex items-center justify-center">

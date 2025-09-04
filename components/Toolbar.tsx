@@ -72,7 +72,11 @@ function ToolbarApp() {
 
   return (
     <>
-      <Toolbar buttons={toolbarButtons} defaultIcon={<Brain size={16} />} />{" "}
+      <Toolbar
+        className="bg-white border-b border-neutral-200"
+        buttons={toolbarButtons}
+        defaultIcon={<Brain size={16} />}
+      />{" "}
       <Sidebar
         isOpen={isBrowserAgentOpen}
         onClose={() => setIsBrowserAgentOpen(false)}

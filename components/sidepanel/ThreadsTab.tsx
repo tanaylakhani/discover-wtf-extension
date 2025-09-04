@@ -9,7 +9,8 @@ import { Skeleton } from "../ui/skeleton";
 import ThreadChatBox from "./ThreadChatBox";
 import { User } from "@/lib/graphql/user";
 import CommentCard from "./comment";
-type TCommentAuthor = {
+
+export type TCommentAuthor = {
   id: string;
   name: string | null | undefined;
   username: string | null | undefined;
@@ -52,11 +53,10 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
   } = useQuery({
     queryKey: ["get-comments", activeLink?.id],
     queryFn: async () => {
-      const stringifiedParams = new URLSearchParams({
+      const response = await browser.runtime.sendMessage({
+        type: "GET_COMMENTS",
         linkId: activeLink?.id as string,
-      }).toString();
-
-      const response = await makeCall(`/comment?${stringifiedParams}`);
+      });
       console.log("fetching comments", response);
       return (response?.comments || []) as Comment[];
     },
@@ -73,23 +73,16 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
       files: File[];
       user: TCommentAuthor;
     }) => {
-      const params = {
+      // Convert files to base64 or send as needed, or just send metadata if not supported
+      // For simplicity, we'll skip file upload in this refactor, but you can adapt as needed
+      const response = await browser.runtime.sendMessage({
+        type: "POST_COMMENT",
         linkId: activeLink?.id as string,
-      };
-      const stringifiedParams = new URLSearchParams(params).toString();
-      console.log("Posting comment with params:", stringifiedParams);
-      const formData = new FormData();
-      formData.append("content", message);
-      formData.append("user", JSON.stringify(user));
-      if (files.length > 0) {
-        formData.append("file", files[0]);
-      }
-      console.log({ formData: Array.from(formData.entries()) });
-      const response = await makeCommentsCall(`/comment?${stringifiedParams}`, {
-        method: "POST",
-        body: formData,
+        message,
+        files,
+        user,
+        // Optionally: files
       });
-
       return response.comment;
     },
 

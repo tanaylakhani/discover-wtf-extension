@@ -1,20 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { makeCall, PublicRandomLink } from "@/lib/utils";
+import { PublicRandomLink } from "@/lib/utils";
 
 export function useHistory(activeLink: PublicRandomLink | null) {
   const queryClient = useQueryClient();
 
-  // Query for history
+  // Query for history via background
   const historyQuery = useQuery<PublicRandomLink[]>({
     queryKey: ["get-history"],
     queryFn: async () => {
-      const response = await makeCall("/track-visit");
+      const response = await browser.runtime.sendMessage({
+        type: "GET_HISTORY",
+      });
       const arr = (response?.data || []) as PublicRandomLink[];
       // Deduplicate by id
       const deduped = Array.from(
         new Map(arr.map((item) => [item.id, item])).values()
       );
-      console.log({ deduped });
       return deduped;
     },
   });
@@ -22,29 +23,18 @@ export function useHistory(activeLink: PublicRandomLink | null) {
   // Mutation for optimistic update
   const addToHistory = useMutation({
     mutationFn: async (link: PublicRandomLink) => {
+      await browser.runtime.sendMessage({ type: "ADD_TO_HISTORY", link });
       return { link };
     },
     onMutate: async (link) => {
-      await queryClient.cancelQueries({
-        queryKey: ["get-history"],
-      });
-
-      console.log("Inside useHistory Mutation");
+      await queryClient.cancelQueries({ queryKey: ["get-history"] });
       const previous = queryClient.getQueryData<PublicRandomLink[]>([
         "get-history",
       ]);
-      // Fetch the latest activeLink from local storage synchronously for optimistic update
-      // const { activeLink: latestActiveLink } = await browser.storage.local.get(
-      //   "activeLink"
-      // );
-      // if (latestActiveLink) {
-      console.log("Inside useHistory Mutation ", link);
-
-      queryClient.setQueryData<PublicRandomLink[]>(["get-history"], (old) => {
-        // Add to the top
-        return [link, ...(old || [])];
-      });
-      // }
+      queryClient.setQueryData<PublicRandomLink[]>(["get-history"], (old) => [
+        link,
+        ...(old || []),
+      ]);
       return { previous };
     },
     onError: (_err, _vars, context) => {
@@ -53,9 +43,7 @@ export function useHistory(activeLink: PublicRandomLink | null) {
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["get-history"],
-      });
+      queryClient.invalidateQueries({ queryKey: ["get-history"] });
     },
   });
 

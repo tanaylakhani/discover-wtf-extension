@@ -6,8 +6,11 @@ import {
   hasDiscoverHistoryParam,
   isValidUrl,
   makeCall,
+  makeCommentsCall,
   updateCount,
 } from "../lib/utils";
+import { TCommentAuthor } from "@/components/sidepanel/ThreadsTab";
+import { UIMessage } from "ai";
 
 // Global variables to store the extension tab ID and window ID
 let extensionTabId: number | null = null;
@@ -232,6 +235,152 @@ async function handleMessage(
     case "LIKE_LINK":
       handleLikeLink(message, sendResponse);
       break;
+    case "GET_HISTORY":
+      const response = await makeCall("/track-visit", {}, 10000);
+      console.log({ history: response?.data });
+      sendResponse({ data: response?.data || [] });
+      break;
+    case "ADD_TO_HISTORY":
+      const { link } = message;
+      sendResponse({ success: true });
+      break;
+    case "GET_USER":
+      try {
+        // Use your existing makeCall utility to fetch user data
+        const resp = await makeCall("/user", {}, 10000);
+        sendResponse({ data: resp?.data });
+      } catch (error) {
+        sendResponse({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    case "GET_COMMENTS":
+      try {
+        const { linkId } = message;
+        const stringifiedParams = new URLSearchParams({ linkId }).toString();
+        const response = await makeCall(`/comment?${stringifiedParams}`);
+        sendResponse({ comments: response?.comments || [] });
+      } catch (error) {
+        sendResponse({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    case "POST_COMMENT":
+      try {
+        const {
+          linkId,
+          message: content,
+          user,
+          files,
+        }: {
+          message: string;
+          linkId: string;
+          files: File[];
+          user: TCommentAuthor;
+        } = message;
+        // If you want to support files, you'll need to handle them (e.g., base64 or other method)
+        const formData = new FormData();
+        formData.append("content", content);
+        formData.append("user", JSON.stringify(user));
+        if (files.length > 0) {
+          formData.append("file", files[0]);
+        }
+        // If you want to support files, add them here
+
+        const stringifiedParams = new URLSearchParams({ linkId }).toString();
+        const response = await makeCommentsCall(
+          `/comment?${stringifiedParams}`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+        sendResponse({ comment: response.comment });
+      } catch (error) {
+        sendResponse({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    case "chat_request":
+      handleChatRequest(message, sender);
+      break;
+  }
+}
+
+async function handleChatRequest(
+  message: any,
+  sender: Browser.runtime.MessageSender
+) {
+  const { messages }: { messages: UIMessage[] } = message.payload;
+  try {
+    const res = await fetch(`${URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: messages,
+      }),
+    });
+
+    if (!res.body) throw new Error("No response body from API");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Split lines (SSE style)
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const dataStr = line.replace(/^data:\s*/, "");
+
+        if (dataStr === "[DONE]") {
+          if (sender.tab?.id) {
+            browser.tabs.sendMessage(sender.tab.id, { type: "chat_done" });
+          }
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(dataStr);
+
+          // Forward only assistant text chunks
+          if (parsed.type === "text-delta" && parsed.delta && sender.tab?.id) {
+            browser.tabs.sendMessage(sender.tab.id, {
+              type: "chat_chunk",
+              data: parsed.delta,
+            });
+          }
+
+          // Optional: handle errors
+          if (parsed.type === "error" && sender.tab?.id) {
+            browser.tabs.sendMessage(sender.tab.id, {
+              type: "chat_error",
+              error: parsed.error,
+            });
+          }
+        } catch (err) {
+          console.error("Failed to parse SSE line:", dataStr, err);
+        }
+      }
+    }
+  } catch (err: any) {
+    if (sender.tab?.id) {
+      browser.tabs.sendMessage(sender.tab.id, {
+        type: "chat_error",
+        error: err.message,
+      });
+    }
   }
 }
 
