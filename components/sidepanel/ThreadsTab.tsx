@@ -31,7 +31,7 @@ export type Comment = {
 type ThreadsTabProps = {
   activeLink: PublicRandomLink | null;
   activeTab: string;
-  user: User;
+  user?: User;
   height: number;
 };
 
@@ -236,11 +236,11 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
                 message: msg,
                 files,
                 user: {
-                  id: user.id,
-                  name: user.name,
-                  avatar: user.profile_image_url,
-                  email: user?.email,
-                  username: user?.username,
+                  id: user!.id,
+                  name: user!.name,
+                  avatar: user!.profile_image_url,
+                  email: user!.email,
+                  username: user!.username,
                 },
               });
             } catch (error) {

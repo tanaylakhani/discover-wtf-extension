@@ -1,7 +1,7 @@
 import { Toolbar } from "@betterstacks/toolbar-sdk";
-import { BookOpen, Brain, Search, Sidebar } from "lucide-react";
+import { BookOpen, Brain, Search, SidebarIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-// import Sidebar from "./Sidebar";
+import Sidebar from "./Sidebar";
 
 function ToolbarApp() {
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
@@ -58,11 +58,12 @@ function ToolbarApp() {
     },
     {
       id: "sidebar-toggle",
-      icon: <Sidebar size={16} />,
+      icon: <SidebarIcon size={16} />,
       tooltip: "Sidebar",
       onClick: (e?: Event) => {
         e?.preventDefault();
         e?.stopPropagation();
+        setIsBrowserAgentOpen((prev) => !prev);
         // console.log('Memory Agent clicked');
         // You can add your memory agent logic here
       },
@@ -71,13 +72,11 @@ function ToolbarApp() {
 
   return (
     <>
-      <div style={{ pointerEvents: "auto" }}>
-        <Toolbar buttons={toolbarButtons} defaultIcon={<Brain size={16} />} />{" "}
-      </div>
-      {/* <Sidebar
+      <Toolbar buttons={toolbarButtons} defaultIcon={<Brain size={16} />} />{" "}
+      <Sidebar
         isOpen={isBrowserAgentOpen}
         onClose={() => setIsBrowserAgentOpen(false)}
-      /> */}
+      />
     </>
   );
 }
