@@ -30,20 +30,8 @@ const Floater: React.FC<FloaterProps> = ({
   activeLink: link,
   urlVisitCount,
 }) => {
-  const [count, setCount] = useState(urlVisitCount || 0);
   const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(link);
-  const {
-    liked,
-    toggleLike,
-    count: likeCount,
-    pending: isLikePending,
-  } = useLike(link?.id as string);
-  const {
-    bookmarkQuery,
-    toggleBookmark,
-    pending: isBookmarkPending,
-  } = useBookmark(link?.id as string);
-  const bookmarkData = bookmarkQuery?.data;
+  const [count, setCount] = useState(urlVisitCount || 0);
 
   const queryClient = useQueryClient();
   const addToHistory = useMutation({
@@ -138,198 +126,75 @@ const Floater: React.FC<FloaterProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    const messageHandler = async (message: any) => {
-      console.log("Received message:", message);
-
-      switch (message.type) {
-        case "MARK_AS_VISITED": {
-          const linkId = message?.data?.linkId as string;
-          console.log("inside markAsVisited floater:", linkId);
-
-          addToHistory.mutate(undefined, {
-            onSuccess: () => {
-              console.log("✅ Successfully added to history:", linkId);
-            },
-            onError: (error: any) => {
-              console.error("❌ Error adding to history:", error);
-            },
-          });
-          break;
-        }
-      }
-    };
-
-    const listener = (message: any) => {
-      console.log("_________Inside Message Handler Floater__________");
-      messageHandler(message);
-      // no need for return true unless using sendResponse
-    };
-
-    browser.runtime.onMessage.addListener(listener);
-
-    return () => {
-      browser.runtime.onMessage.removeListener(listener);
-    };
-  }, [addToHistory, activeLink]);
-
-  const handleSidePanelOpen = async (activeTab: string) => {
-    const extensionTabId = await browser.storage.local.get("extensionTabId");
-    console.log("Opening side panel for tab:", extensionTabId);
-    const currentTabId = await browser.runtime.sendMessage({
-      type: "GET_CURRENT_TAB_ID",
-    });
-    const isExtensionTab =
-      extensionTabId?.extensionTabId === currentTabId?.tabId;
-    console.log({ isExtensionTab });
-    await browser.storage.local.set({
-      activeSidePanelTab: activeTab,
-    });
-    await browser.runtime
-      .sendMessage({
-        type: "OPEN_SIDE_PANEL",
-      })
-      .catch(console.error);
-  };
-
-  const options = [
-    {
-      handleClick: async () => {
-        toggleLike(!liked);
-      },
-      name: "Like",
-      icon: HeartRounded,
-      disabled: isLikePending,
-
-      fill: liked ? "black" : "none",
-    },
-    {
-      handleClick: async () => {
-        await handleSidePanelOpen("comments");
-      },
-      disabled: false,
-
-      name: "Comment",
-      icon: AnnotationDots,
-      fill: "none",
-    },
-    {
-      handleClick: async () => {
-        await handleSidePanelOpen("ask");
-      },
-      name: "Ask AI",
-      icon: MagicWand01,
-      fill: "none",
-      disabled: false,
-    },
-    {
-      handleClick: async () => {
-        toggleBookmark(!bookmarkData?.bookmarked);
-      },
-      name: "Save",
-      icon: Bookmark,
-      disabled: isBookmarkPending,
-      fill: bookmarkData?.bookmarked ? "black" : "none",
-    },
-    // {name:"Share", icon: <Share/>},
-  ];
-  const [inRabbitHole, setIsInRabbitHole] = useState(false);
-
-  const [isOpen, setIsOpen] = useState(false);
-
-  const containerVariants = {
-    open: {
-      height: 200,
-      transition: {
-        when: "beforeChildren",
-        staggerChildren: 0.08,
-        duration: 0.3,
-      },
-    },
-    closed: {
-      height: 0,
-      transition: {
-        when: "afterChildren",
-        staggerChildren: 0.05,
-        staggerDirection: -1,
-        duration: 0.2,
-      },
-    },
-  };
-  const itemVariants = {
-    open: { opacity: 1, y: 0, scale: 1 },
-    closed: { opacity: 0, y: 10, scale: 0.95 },
-  };
-
   return (
     <>
       {" "}
-      <ToolbarApp />
+      <ToolbarApp activeLink={activeLink} addToHistory={addToHistory} />
     </>
   );
 };
 
 export default Floater;
-      // <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
-      //   <AnimatePresence>
-      //     {isOpen && (
-      //       <motion.div
-      //         className=" flex flex-col pt-2 items-center "
-      //         initial="closed"
-      //         animate="open"
-      //         exit="closed"
-      //         variants={containerVariants}
-      //       >
-      //         {options.map((option, index) => (
-      //           <motion.button
-      //             key={index}
-      //             variants={itemVariants}
-      //             onClick={option.handleClick}
-      //             disabled={option?.disabled}
-      //             className="p-2 size-12 rounded-full flex items-center justify-center relative group "
-      //           >
-      //             {/* Tooltip */}
-      //             <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
-      //               {option.name}
-      //             </div>
+// <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
+//   <AnimatePresence>
+//     {isOpen && (
+//       <motion.div
+//         className=" flex flex-col pt-2 items-center "
+//         initial="closed"
+//         animate="open"
+//         exit="closed"
+//         variants={containerVariants}
+//       >
+//         {options.map((option, index) => (
+//           <motion.button
+//             key={index}
+//             variants={itemVariants}
+//             onClick={option.handleClick}
+//             disabled={option?.disabled}
+//             className="p-2 size-12 rounded-full flex items-center justify-center relative group "
+//           >
+//             {/* Tooltip */}
+//             <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
+//               {option.name}
+//             </div>
 
-      //             {/* Badge on first item */}
-      //             {index === 0 && (
-      //               <div className="p-1 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 aspect-square size-6 bg-white">
-      //                 <span className="text-xs font-semibold">
-      //                   {Number(likeCount)}
-      //                 </span>
-      //               </div>
-      //             )}
+//             {/* Badge on first item */}
+//             {index === 0 && (
+//               <div className="p-1 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 aspect-square size-6 bg-white">
+//                 <span className="text-xs font-semibold">
+//                   {Number(likeCount)}
+//                 </span>
+//               </div>
+//             )}
 
-      //             {/* Icon */}
-      //             <option.icon
-      //               style={{
-      //                 fill: option.fill || "none",
-      //                 stroke:
-      //                   option?.fill && option.fill === "black"
-      //                     ? "black"
-      //                     : "#404040",
-      //                 strokeWidth: 1.4,
-      //               }}
-      //               className="size-6"
-      //             />
-      //           </motion.button>
-      //         ))}
-      //       </motion.div>
-      //     )}
-      //   </AnimatePresence>
+//             {/* Icon */}
+//             <option.icon
+//               style={{
+//                 fill: option.fill || "none",
+//                 stroke:
+//                   option?.fill && option.fill === "black"
+//                     ? "black"
+//                     : "#404040",
+//                 strokeWidth: 1.4,
+//               }}
+//               className="size-6"
+//             />
+//           </motion.button>
+//         ))}
+//       </motion.div>
+//     )}
+//   </AnimatePresence>
 
-      //   {/* Toggle Button */}
-      //   <motion.button
-      //     onClick={() => setIsOpen((prev) => !prev)}
-      //     className="size-12 rounded-full flex items-center justify-center"
-      //     animate={{ rotate: isOpen ? 45 : 0 }}
-      //     transition={{ duration: 0.5 }}
-      //   >
-      //     <Plus className="size-6" />
-      //   </motion.button>
-      // </div>
+//   {/* Toggle Button */}
+//   <motion.button
+//     onClick={() => setIsOpen((prev) => !prev)}
+//     className="size-12 rounded-full flex items-center justify-center"
+//     animate={{ rotate: isOpen ? 45 : 0 }}
+//     transition={{ duration: 0.5 }}
+//   >
+//     <Plus className="size-6" />
+//   </motion.button>
+// </div>
 
 // <div className={cn("fixed top-32 flex flex-col items-end right-0 ")}>
 //   <motion.div className="w-fit gap-x-2 flex items-center justify-center">

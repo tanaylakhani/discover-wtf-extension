@@ -28,7 +28,7 @@ const CommentCard = ({ comment }: TCommentProps) => {
                   : comment?.user?.email}
               </span>
               <Dot className="size-3" />
-              <span className="text-xs font-medium text-neutral-700 ">
+              <span className="text-sm font-medium text-neutral-700 ">
                 {new Date(comment?.commentedAt).toDateString()}
               </span>
             </div>

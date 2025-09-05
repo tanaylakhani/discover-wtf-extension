@@ -1,9 +1,10 @@
 "use client";
 
-import { PublicRandomLink, TUser } from "@/lib/utils";
+import { cn, PublicRandomLink, TUser } from "@/lib/utils";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
-import { useState, useRef, useEffect } from "react";
-import useMeasure from "react-use-measure";
+import { UIMessage } from "ai";
+import HardenReactMarkdown from "harden-react-markdown";
+import { useRef, useState } from "react";
 import {
   PromptInput,
   PromptInputSubmit,
@@ -11,7 +12,11 @@ import {
   PromptInputToolbar,
 } from "../ai-elements/prompt-input";
 import { ScrollArea } from "../ui/scroll-area";
-import { UIMessage } from "ai";
+import useMeasure from "react-use-measure";
+import hardenReactMarkdown from "harden-react-markdown";
+import ReactMarkdown, { type Options } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CodeBlock, CodeBlockCopyButton } from "../ai-elements/code-block";
 
 type Message = {
   role: "user" | "assistant";
@@ -23,67 +28,17 @@ type AskTabProps = {
   activeLink: PublicRandomLink | null;
   user?: TUser;
   height: number;
+  messages: UIMessage[];
+  setMessages: (messages: UIMessage[]) => void;
 };
 
-const AskTab = ({ user, height }: AskTabProps) => {
+const AskTab = ({ user, height, messages, setMessages }: AskTabProps) => {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<UIMessage[]>([]);
+  const HardenedMarkdown = hardenReactMarkdown(ReactMarkdown);
   const [ref, bounds] = useMeasure();
   const scrollAreaHeight = `calc(100vh - ${height + bounds?.height}px)`;
   const viewportRef = useRef<HTMLDivElement>(null);
-
-  const portRef = useRef<Browser.runtime.Port | null>(null);
-
-  useEffect(() => {
-    if (viewportRef.current) {
-      viewportRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    const handleMessage = (msg: any) => {
-      if (msg.type === "chat_chunk") {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-
-          if (last && last.role === "assistant") {
-            return [
-              ...prev.slice(0, -1),
-              {
-                ...last,
-                parts: [
-                  {
-                    ...last.parts[0],
-                    text:
-                      last.parts[0].type === "text"
-                        ? last.parts[0].text + msg.data
-                        : msg.data,
-                  },
-                ],
-              },
-            ];
-          }
-
-          return [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              role: "assistant",
-              parts: [{ text: msg.data, type: "text" }],
-            },
-          ];
-        });
-      } else if (msg.type === "chat_done") {
-        console.log("Stream finished");
-      } else if (msg.type === "chat_error") {
-        console.error("Chat error:", msg.error);
-      }
-    };
-
-    browser.runtime.onMessage.addListener(handleMessage);
-    return () => browser.runtime.onMessage.removeListener(handleMessage);
-  }, []);
 
   const initialPrompts = [
     "Summarize the page I’m currently viewing",
@@ -91,7 +46,7 @@ const AskTab = ({ user, height }: AskTabProps) => {
     "Explain this article in simple terms",
     "Give me a quick 2-sentence summary",
   ];
-  const sendMessage = () => {
+  const sendMessage = (msg: string) => {
     if (!input.trim()) return;
 
     const newMessage: UIMessage = {
@@ -99,7 +54,7 @@ const AskTab = ({ user, height }: AskTabProps) => {
       role: "user",
       parts: [
         {
-          text: input,
+          text: msg,
           type: "text",
         },
       ],
@@ -118,9 +73,145 @@ const AskTab = ({ user, height }: AskTabProps) => {
       payload: { messages: updated },
     });
   };
+  useEffect(() => {
+    if (viewportRef.current) {
+      viewportRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    }
+  }, [messages?.length]);
+  const components = {
+    ol: ({ node, children, className, ...props }: any) => (
+      <ol
+        className={cn("ml-4 list-outside list-decimal", className)}
+        {...props}
+      >
+        {children}
+      </ol>
+    ),
+    li: ({ node, children, className, ...props }: any) => (
+      <li className={cn("py-1", className)} {...props}>
+        {children}
+      </li>
+    ),
+    ul: ({ node, children, className, ...props }: any) => (
+      <ul
+        className={cn("ml-4 list-outside list-decimal", className)}
+        {...props}
+      >
+        {children}
+      </ul>
+    ),
+    strong: ({ node, children, className, ...props }: any) => (
+      <span className={cn("font-medium font-inter", className)} {...props}>
+        {children}
+      </span>
+    ),
+    a: ({ node, children, className, ...props }: any) => (
+      <a
+        className={cn("font-medium text-primary underline", className)}
+        rel="noreferrer"
+        target="_blank"
+        {...props}
+      >
+        {children}
+      </a>
+    ),
+    h1: ({ node, children, className, ...props }: any) => (
+      <h1
+        className={cn(
+          "mt-6 mb-2 font-medium tracking-tight text-3xl",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </h1>
+    ),
+    h2: ({ node, children, className, ...props }: any) => (
+      <h2
+        className={cn(
+          "mt-6 mb-2 font-medium tracking-tight text-2xl",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </h2>
+    ),
+    h3: ({ node, children, className, ...props }: any) => (
+      <h3
+        className={cn(
+          "mt-6 mb-2 font-medium tracking-tight text-xl",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </h3>
+    ),
+    h4: ({ node, children, className, ...props }: any) => (
+      <h4
+        className={cn(
+          "mt-6 mb-2 font-medium tracking-tight text-lg",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </h4>
+    ),
+    h5: ({ node, children, className, ...props }: any) => (
+      <h5
+        className={cn("mt-6 mb-2 font-medium text-base", className)}
+        {...props}
+      >
+        {children}
+      </h5>
+    ),
+    h6: ({ node, children, className, ...props }: any) => (
+      <h6
+        className={cn("mt-6 mb-2 font-semibold text-sm", className)}
+        {...props}
+      >
+        {children}
+      </h6>
+    ),
+    pre: ({ node, className, children }: any) => {
+      let language = "javascript";
+
+      if (typeof node?.properties?.className === "string") {
+        language = node.properties.className.replace("language-", "");
+      }
+
+      const childrenIsCode =
+        typeof children === "object" &&
+        children !== null &&
+        "type" in children &&
+        children.type === "code";
+
+      if (!childrenIsCode) {
+        return <pre>{children}</pre>;
+      }
+
+      return (
+        <CodeBlock
+          className={cn("my-4 h-auto", className)}
+          code={(children.props as { children: string }).children}
+          language={language}
+        >
+          <CodeBlockCopyButton
+            onCopy={() => console.log("Copied code to clipboard")}
+            onError={() => console.error("Failed to copy code to clipboard")}
+          />
+        </CodeBlock>
+      );
+    },
+  };
 
   return (
-    <div className="flex flex-col">
+    <div className="flex font-inter flex-col">
       <ScrollArea
         style={{ height: scrollAreaHeight }}
         className="w-full relative overflow-y-auto"
@@ -141,7 +232,7 @@ const AskTab = ({ user, height }: AskTabProps) => {
                     <div
                       key={i}
                       onClick={() => {
-                        setInput(prompt);
+                        sendMessage(prompt);
                       }}
                       className="bg-white z-[2] p-4 leading-tight cursor-pointer hover:bg-neutral-50 rounded-xl border border-neutral-300 font-medium tracking-tight text-sm text-neutral-700"
                     >
@@ -151,17 +242,26 @@ const AskTab = ({ user, height }: AskTabProps) => {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col space-y-4 py-4">
+              <div className="flex flex-col px-3 space-y-4 py-4">
                 {messages.map((m) => (
                   <div
                     key={m.id}
                     className={`mb-2 ${
-                      m.role === "user" ? "text-blue-600" : "text-green-600"
+                      m.role === "user"
+                        ? "bg-orange-100 p-2 rounded-xl text-orange-800 self-start"
+                        : " self-end"
                     }`}
                   >
-                    <strong>{m.role}:</strong>{" "}
                     {m.parts.map((p, i) =>
-                      p.type === "text" ? <span key={i}>{p.text}</span> : null
+                      p.type === "text" ? (
+                        <HardenedMarkdown
+                          components={components}
+                          remarkPlugins={[remarkGfm]}
+                          key={i}
+                        >
+                          {p.text}
+                        </HardenedMarkdown>
+                      ) : null
                     )}
                   </div>
                 ))}
@@ -177,7 +277,10 @@ const AskTab = ({ user, height }: AskTabProps) => {
       >
         <PromptInput
           className="bg-white border-neutral-300"
-          onSubmit={sendMessage}
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendMessage(input);
+          }}
         >
           <PromptInputTextarea
             onChange={(e) => setInput(e.target.value)}

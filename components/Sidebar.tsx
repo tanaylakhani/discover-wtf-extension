@@ -1,24 +1,11 @@
 import {
-  AnnotationDots,
-  InfoCircle,
-  LayoutLeft,
-  List,
-  MagicWand01,
-} from "@untitled-ui/icons-react";
-import React from "react";
-import ThreadsTab from "./sidepanel/ThreadsTab";
-import AskTab from "./sidepanel/AskTab";
-import InfoTab from "./sidepanel/InfoTab";
-import HistoryTab from "./sidepanel/HistoryTab";
-import useMeasure from "react-use-measure";
-import {
   capitalizeFirstLetter,
   cn,
-  makeCall,
   PublicRandomLink,
   TUser,
 } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { UIMessage } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   History,
@@ -27,9 +14,14 @@ import {
   PanelRightClose,
   Sparkles,
 } from "lucide-react";
-import { convertToModelMessages, UIMessage } from "ai";
+import React from "react";
+import useMeasure from "react-use-measure";
+import AskTab from "./sidepanel/AskTab";
+import HistoryTab from "./sidepanel/HistoryTab";
+import InfoTab from "./sidepanel/InfoTab";
+import ThreadsTab from "./sidepanel/ThreadsTab";
 
-const tabsIcon = {
+export const tabsIcon = {
   history: History,
   comments: MessageCircle,
   ask: Sparkles,
@@ -40,13 +32,22 @@ const tabsIcon = {
 type SidebarProps = {
   isOpen: boolean;
   onClose: () => void;
+  messages: UIMessage[];
+  setMessages: (messages: UIMessage[]) => void;
+  activeTab: keyof typeof tabsIcon;
+  setActiveTab: (tab: keyof typeof tabsIcon) => void;
 };
 
-const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
+const Sidebar = ({
+  isOpen,
+  onClose,
+  messages,
+  setMessages,
+  activeTab,
+  setActiveTab,
+}: SidebarProps) => {
   const [ref, bounds] = useMeasure();
   const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(null);
-
-  const [activeTab, setActiveTab] = useState<keyof typeof tabs>("history");
 
   const { data, isLoading } = useQuery({
     queryKey: ["get-user"],
@@ -76,6 +77,8 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     ),
     ask: (
       <AskTab
+        messages={messages}
+        setMessages={setMessages}
         height={bounds?.height}
         user={data as TUser}
         activeLink={activeLink}
@@ -146,6 +149,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             zIndex: 2147483647,
             right: "0px",
           }}
+          transition={{ type: "tween", ease: "easeIn", duration: 0.3 }}
           className="overflow-hidden fixed top-0 bottom-0 h-screen  bg-white border-l shadow-xl rounded-l-xl border-neutral-200 max-w-md w-full flex flex-col "
         >
           <div ref={ref} className="w-full  flex flex-col">

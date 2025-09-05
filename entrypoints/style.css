@@ -1,5 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
 @import "tw-animate-css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 @tailwind base;
@@ -70,11 +71,11 @@
   }
 }
 
-.inter-sans {
+.font-instrument {
+  font-family: "Instrument Serif", serif;
+}
+.font-inter {
   font-family: "Inter", sans-serif;
-  font-optical-sizing: auto;
-  font-weight: 400;
-  font-style: normal;
 }
 
 #floater-wrapper {
@@ -85,10 +86,10 @@
   scale: 1 !important;
   position: relative;
   box-sizing: border-box;
-  @apply inter-sans;
+  @apply font-inter;
 }
 #root {
-  @apply inter-sans;
+  @apply font-inter;
 }
 
 .sidepanel-heading {

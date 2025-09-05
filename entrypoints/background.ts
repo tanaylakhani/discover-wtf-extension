@@ -11,6 +11,7 @@ import {
 } from "../lib/utils";
 import { TCommentAuthor } from "@/components/sidepanel/ThreadsTab";
 import { UIMessage } from "ai";
+import { error } from "console";
 
 // Global variables to store the extension tab ID and window ID
 let extensionTabId: number | null = null;
@@ -305,14 +306,15 @@ async function handleMessage(
       }
       break;
     case "chat_request":
-      handleChatRequest(message, sender);
+      handleChatRequest(message, sender, sendResponse);
       break;
   }
 }
 
 async function handleChatRequest(
   message: any,
-  sender: Browser.runtime.MessageSender
+  sender: Browser.runtime.MessageSender,
+  sendResponse?: (response?: any) => void
 ) {
   const { messages }: { messages: UIMessage[] } = message.payload;
   try {
@@ -330,6 +332,9 @@ async function handleChatRequest(
     const decoder = new TextDecoder();
     let buffer = "";
 
+    // Get the tabId to relay messages to the correct content script
+    const tabId = sender.tab?.id;
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -345,9 +350,11 @@ async function handleChatRequest(
         const dataStr = line.replace(/^data:\s*/, "");
 
         if (dataStr === "[DONE]") {
-          if (sender.tab?.id) {
-            browser.tabs.sendMessage(sender.tab.id, { type: "chat_done" });
+          // Notify content script that stream is done
+          if (tabId !== undefined) {
+            browser.tabs.sendMessage(tabId, { type: "CHAT_DONE" });
           }
+          if (sendResponse) sendResponse({ type: "CHAT_DONE" });
           return;
         }
 
@@ -355,19 +362,38 @@ async function handleChatRequest(
           const parsed = JSON.parse(dataStr);
 
           // Forward only assistant text chunks
-          if (parsed.type === "text-delta" && parsed.delta && sender.tab?.id) {
-            browser.tabs.sendMessage(sender.tab.id, {
-              type: "chat_chunk",
-              data: parsed.delta,
-            });
+          if (parsed.type === "text-delta" && parsed.delta) {
+            console.log({ delta: parsed?.delta });
+            if (tabId !== undefined) {
+              browser.tabs.sendMessage(tabId, {
+                type: "CHAT_CHUNK",
+                data: parsed.delta,
+              });
+            }
+            // Optionally, also call sendResponse for legacy/compat
+            if (sendResponse) {
+              sendResponse({
+                type: "CHAT_CHUNK",
+                data: parsed.delta,
+              });
+            }
           }
 
           // Optional: handle errors
-          if (parsed.type === "error" && sender.tab?.id) {
-            browser.tabs.sendMessage(sender.tab.id, {
-              type: "chat_error",
-              error: parsed.error,
-            });
+          if (parsed.type === "error") {
+            console.log({ error: parsed?.error });
+            if (tabId !== undefined) {
+              browser.tabs.sendMessage(tabId, {
+                type: "CHAT_ERROR",
+                error: parsed.error,
+              });
+            }
+            if (sendResponse) {
+              sendResponse({
+                type: "CHAT_ERROR",
+                error: parsed.error,
+              });
+            }
           }
         } catch (err) {
           console.error("Failed to parse SSE line:", dataStr, err);
@@ -375,8 +401,15 @@ async function handleChatRequest(
       }
     }
   } catch (err: any) {
-    if (sender.tab?.id) {
-      browser.tabs.sendMessage(sender.tab.id, {
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) {
+      browser.tabs.sendMessage(tabId, {
+        type: "chat_error",
+        error: err.message,
+      });
+    }
+    if (sendResponse) {
+      sendResponse({
         type: "chat_error",
         error: err.message,
       });
