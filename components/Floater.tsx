@@ -2,31 +2,25 @@ import rabbit from "@/assets/rabbit-hole-icon.gif";
 import spiral from "@/assets/spiral.png";
 import "@/entrypoints/style.css";
 import { useLike } from "@/hooks/useLike";
+import { useBookmark } from "@/hooks/useBookmark";
 import { cn, PublicRandomLink } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  AnnotationDots,
+  MessageCircle,
   Bookmark,
-  HeartRounded,
-  MagicWand01,
-  Plus,
+  Heart,
   X,
-} from "@untitled-ui/icons-react";
+  WandSparkles,
+} from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Toolbar } from "@betterstacks/toolbar-sdk";
 type FloaterProps = {
   activeLink: PublicRandomLink | null;
   urlVisitCount: number;
 };
 
-type GetLinksPayload = {
-  count: number;
-  data: {
-    userId: string;
-    linkId: string;
-    likedAt: Date;
-  }[];
-};
 
 const Floater: React.FC<FloaterProps> = ({
   activeLink: link,
@@ -38,12 +32,10 @@ const Floater: React.FC<FloaterProps> = ({
     liked,
     toggleLike,
     count: likeCount,
-    pending: isLikePending,
   } = useLike(link?.id as string);
   const {
     bookmarkQuery,
     toggleBookmark,
-    pending: isBookmarkPending,
   } = useBookmark(link?.id as string);
   const bookmarkData = bookmarkQuery?.data;
 
@@ -194,78 +186,65 @@ const Floater: React.FC<FloaterProps> = ({
       .catch(console.error);
   };
 
-  const options = [
-    {
-      handleClick: async () => {
-        toggleLike(!liked);
-      },
-      name: "Like",
-      icon: HeartRounded,
-      disabled: isLikePending,
-
-      fill: liked ? "black" : "none",
-    },
-    {
-      handleClick: async () => {
-        await handleSidePanelOpen("comments");
-      },
-      disabled: false,
-
-      name: "Comment",
-      icon: AnnotationDots,
-      fill: "none",
-    },
-    {
-      handleClick: async () => {
-        await handleSidePanelOpen("ask");
-      },
-      name: "Ask AI",
-      icon: MagicWand01,
-      fill: "none",
-      disabled: false,
-    },
-    {
-      handleClick: async () => {
-        toggleBookmark(!bookmarkData?.bookmarked);
-      },
-      name: "Save",
-      icon: Bookmark,
-      disabled: isBookmarkPending,
-      fill: bookmarkData?.bookmarked ? "black" : "none",
-    },
-    // {name:"Share", icon: <Share/>},
-  ];
   const [inRabbitHole, setIsInRabbitHole] = useState(false);
 
-  const [isOpen, setIsOpen] = useState(false);
-
-  const containerVariants = {
-    open: {
-      height: 200,
-      transition: {
-        when: "beforeChildren",
-        staggerChildren: 0.08,
-        duration: 0.3,
-      },
+  // Create toolbar buttons with same functionality
+  const toolbarButtons = [
+    {
+      id: "ask-ai",
+      icon: <WandSparkles 
+        size={16}
+        style={{
+          fill: "none",
+          stroke: "#6b7280",
+        }}
+      />,
+      tooltip: "Ask AI",
+      onClick: () => handleSidePanelOpen("ask"),
     },
-    closed: {
-      height: 0,
-      transition: {
-        when: "afterChildren",
-        staggerChildren: 0.05,
-        staggerDirection: -1,
-        duration: 0.2,
-      },
+    {
+      id: "like",
+      icon: <Heart 
+        size={16}
+        style={{
+          fill: liked ? "#FFD996" : "none",
+        }}
+      />,
+      tooltip: "Like",
+      onClick: () => toggleLike(!liked),
+      count: Number(likeCount),
+      pinned: true,
     },
-  };
-  const itemVariants = {
-    open: { opacity: 1, y: 0, scale: 1 },
-    closed: { opacity: 0, y: 10, scale: 0.95 },
-  };
+    {
+      id: "comment",
+      icon: <MessageCircle 
+        size={16}
+        style={{
+          fill: "none",
+          stroke: "#6b7280",
+        }}
+      />,
+      tooltip: "Comment",
+      onClick: () => handleSidePanelOpen("comments"),
+      pinned: true,
+    },
+    {
+      id: "bookmark",
+      icon: <Bookmark 
+        size={16}
+        style={{
+          fill: bookmarkData?.bookmarked ? "#FFD996" : "none",
+        }}
+      />,
+      tooltip: "Save",
+      onClick: () => toggleBookmark(!bookmarkData?.bookmarked),
+      pinned: false,
+    },
+  ];
 
   return (
     <>
-      {" "}
+      {/* Rabbit hole and discover count UI - keeping the same */}
       <div className={cn("fixed top-32 flex flex-col items-end right-0 ")}>
         <motion.div className="w-fit gap-x-2 flex items-center justify-center">
           <AnimatePresence>
@@ -278,9 +257,6 @@ const Floater: React.FC<FloaterProps> = ({
                 className={
                   "bg-indigo-700 text-white h-12 w-fit px-6  rounded-full flex items-center justify-center "
                 }
-                // onClick={() => {
-                //   setIsInRabbitHole(true);
-                // }}
               >
                 <button
                   onClick={() => setIsInRabbitHole(false)}
@@ -289,10 +265,10 @@ const Floater: React.FC<FloaterProps> = ({
                   <X className="stroke-white size-8" />
                 </button>
                 <img
-                  src={spiral} // force reload by changing URL
+                  src={spiral}
                   alt="Animated"
                   className="size-8  animate-spin  object-cover"
-                />{" "}
+                />
                 <div className="flex flex-col ml-3 items-start">
                   <span className="tracking-tight text-xs font-medium">
                     In Rabbit Hole:
@@ -304,11 +280,6 @@ const Floater: React.FC<FloaterProps> = ({
               </motion.div>
             )}
           </AnimatePresence>
-          {/* <div
-            className={
-              " h-12 w-fit py-1 pl-1 rounded-l-full flex items-center justify-center"
-            }
-          > */}
           <div
             id="discover-count"
             className="bg-purple-500 w-full rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center "
@@ -320,14 +291,12 @@ const Floater: React.FC<FloaterProps> = ({
               {count}
             </span>
           </div>
-          {/* </div> */}
         </motion.div>
         <motion.div
           id="source"
           className={
             "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[65%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
           }
-          // className="bg-neutral-50 border border-neutral-200  mb-4 size-10 font-medium flex items-center justify-center rounded-l-full text-neutral-900"
         >
           <span className="text-neutral-500 text-sm px-4 font-semibold ">
             Source: "{activeLink?.domain}" from betterstacks
@@ -340,7 +309,6 @@ const Floater: React.FC<FloaterProps> = ({
                 exit={{
                   opacity: 0,
                   width: 0,
-                  // margin: 0,
                   padding: 0,
                   transition: { duration: 0.3, ease: "easeInOut" },
                 }}
@@ -350,7 +318,7 @@ const Floater: React.FC<FloaterProps> = ({
                 }}
               >
                 <img
-                  src={rabbit} // force reload by changing URL
+                  src={rabbit}
                   alt="Animated"
                   className="  object-cover"
                 />
@@ -359,66 +327,26 @@ const Floater: React.FC<FloaterProps> = ({
           </AnimatePresence>
         </motion.div>
       </div>
-      <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              className=" flex flex-col pt-2 items-center "
-              initial="closed"
-              animate="open"
-              exit="closed"
-              variants={containerVariants}
-            >
-              {options.map((option, index) => (
-                <motion.button
-                  key={index}
-                  variants={itemVariants}
-                  onClick={option.handleClick}
-                  disabled={option?.disabled}
-                  className="p-2 size-12 rounded-full flex items-center justify-center relative group "
-                >
-                  {/* Tooltip */}
-                  <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
-                    {option.name}
-                  </div>
 
-                  {/* Badge on first item */}
-                  {index === 0 && (
-                    <div className="p-1 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 aspect-square size-6 bg-white">
-                      <span className="text-xs font-semibold">
-                        {Number(likeCount)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Icon */}
-                  <option.icon
-                    style={{
-                      fill: option.fill || "none",
-                      stroke:
-                        option?.fill && option.fill === "black"
-                          ? "black"
-                          : "#404040",
-                      strokeWidth: 1.4,
-                    }}
-                    className="size-6"
-                  />
-                </motion.button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Toggle Button */}
-        <motion.button
-          onClick={() => setIsOpen((prev) => !prev)}
-          className="size-12 rounded-full flex items-center justify-center"
-          animate={{ rotate: isOpen ? 45 : 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Plus className="size-6" />
-        </motion.button>
-      </div>
+      {createPortal(
+        <Toolbar
+          buttons={toolbarButtons}
+          theme={{
+            backgroundColor: "rgba(255, 255, 255, 0.95)",
+            borderColor: "rgba(249, 115, 22, 0.2)",
+            iconColor: "#6b7280",
+            hoverBackgroundColor: "rgba(249, 115, 22, 0.1)",
+            tooltipBackgroundColor: "#f97316",
+            tooltipTextColor: "#ffffff",
+            backdropFilter: "blur(12px)",
+            boxShadow: "0 4px 20px rgba(249, 115, 22, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1)",
+            badgeBackgroundColor: "#f97316",
+            badgeTextColor: "#ffffff",
+            badgeBorderColor: "rgba(249, 115, 22, 0.3)",
+          }}
+        />,
+        document.body
+      )}
     </>
   );
 };
