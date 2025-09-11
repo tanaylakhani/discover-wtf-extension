@@ -1,35 +1,71 @@
-import { Dot } from "lucide-react";
+import { cn, timeAgo } from "@/lib/utils";
+import { Dot, Heart, MessageCircle, SmilePlus } from "lucide-react";
+import React from "react";
 import { Comment } from "./ThreadsTab";
+import { Skeleton } from "../ui/skeleton";
 
 type TCommentProps = {
   comment: Comment;
+  toReply: Comment | null;
+  onReplyClick?: (comment: Comment) => void;
 };
 
-const CommentCard = ({ comment }: TCommentProps) => {
+const CommentCard = ({
+  comment,
+  onReplyClick,
+  toReply,
+  isReply = false,
+}: TCommentProps & { isReply?: boolean }) => {
+  const [showReplies, setShowReplies] = React.useState(false);
+  const { liked, likeCount, toggleLike, isLoading } = useLikeComment(
+    comment.id
+  );
+  const icons = [
+    {
+      title: "like",
+      icon: Heart,
+      fill: liked ? "red" : "none",
+      likeCount: likeCount,
+      isFetching: isLoading,
+      onClick: () => {
+        toggleLike();
+      },
+    },
+    {
+      title: "comment",
+      icon: MessageCircle,
+
+      onClick: () => onReplyClick?.(comment),
+    },
+    { title: "react", icon: SmilePlus, onClick: () => {} },
+  ];
+
   return (
     <div
-      key={comment.id} // Use comment ID as key, fallback to index
-      className="border-b flex items-start justify-center w-full px-6 border-neutral-200 py-4"
+      className={cn(
+        "flex items-start justify-center w-full px-6 py-4",
+        isReply
+          ? "border border-neutral-200 rounded-xl mt-2 "
+          : "border-b border-neutral-200",
+        toReply?.id === comment.id && "bg-orange-50"
+      )}
     >
-      <img
-        className="size-10 rounded-full object-cover"
-        src={comment?.user?.avatar as string}
-      />
-      <div className="flex-1 ml-3 flex flex-col w-full">
+      {!isReply && (
+        <img
+          className="size-8 rounded-full object-cover"
+          src={comment?.user?.avatar as string}
+        />
+      )}
+      <div className={cn("flex-1 flex flex-col w-full", !isReply && " ml-3")}>
         <div className="flex mb-2 items-center justify-center w-full">
           <div className=" text-base leading-tight flex flex-col flex-1">
-            <h2 className="font-medium leading-none text-sm">
-              {comment?.user?.name}
-            </h2>
             <div className="flex items-center justify-start">
-              <span className="text-sm text-neutral-700 font-medium">
-                {comment?.user?.username
-                  ? `@${comment?.user?.username}`
-                  : comment?.user?.email}
-              </span>
+              <h2 className="font-medium tracking-tight text-sm leading-none">
+                {comment?.user?.name}
+              </h2>
               <Dot className="size-3" />
-              <span className="text-sm font-medium text-neutral-700 ">
-                {new Date(comment?.commentedAt).toDateString()}
+              <span className="text-sm font-medium text-neutral-600 ">
+                {timeAgo(new Date(comment?.commentedAt))}
               </span>
             </div>
           </div>
@@ -66,9 +102,54 @@ const CommentCard = ({ comment }: TCommentProps) => {
             ))}
           </div>
         )}
-        {/* {comment.id.startsWith("temp-") && (
-                <span className="text-xs text-gray-500 italic">Sending...</span>
-                )} */}
+        <div className="w-full mt-4 flex items-center justify-between">
+          <div className=" flex items-center justify-start space-x-3">
+            {icons.map(
+              ({ title, icon, onClick, fill, likeCount, isFetching }, i) => (
+                <button
+                  onClick={onClick}
+                  key={title}
+                  className="flex items-center justify-center space-x-1"
+                >
+                  {React.createElement(icon, {
+                    fill: fill || "none",
+                    className: "size-4 opacity-70",
+                  })}
+
+                  {i === 0 &&
+                    (isFetching ? (
+                      <Skeleton className="h-4 w-3 bg-neutral-300 rounded-lg" />
+                    ) : (
+                      <span className="text-neutral-600 text-sm">
+                        {Number(likeCount)}
+                      </span>
+                    ))}
+                </button>
+              )
+            )}
+          </div>
+          {comment.replies!?.length > 0 && (
+            <div
+              className="tracking-tight text-sm text-neutral-600 cursor-pointer"
+              onClick={() => setShowReplies(!showReplies)}
+            >
+              {showReplies ? "Hide Replies" : "Show Replies"}
+            </div>
+          )}
+        </div>
+
+        {showReplies && comment.replies!?.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {comment.replies!?.map((reply) => (
+              <CommentCard
+                toReply={toReply}
+                key={reply.id}
+                comment={reply}
+                isReply={true}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

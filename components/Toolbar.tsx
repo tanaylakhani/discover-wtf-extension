@@ -1,3 +1,4 @@
+// Util function to request extraction via background script
 import { useBookmark } from "@/hooks/useBookmark";
 import { useLike } from "@/hooks/useLike";
 import { PublicRandomLink } from "@/lib/utils";
@@ -27,7 +28,6 @@ type ToolbarProps = {
 };
 
 function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
-  const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
   const [isBrowserAgentOpen, setIsBrowserAgentOpen] = useState(false);
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [activeTab, setActiveTab] = useState<keyof typeof tabsIcon>("history");
@@ -204,7 +204,6 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
       },
     },
   ];
-  console.log("Sidebar open?", isBrowserAgentOpen);
   return (
     <>
       <Toolbar
@@ -220,6 +219,7 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
       <Sidebar
         isOpen={isBrowserAgentOpen}
         messages={messages}
+        activeLink={activeLink as PublicRandomLink}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         setMessages={setMessages}

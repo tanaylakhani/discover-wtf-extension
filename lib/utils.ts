@@ -21,8 +21,6 @@ export const getFirstName = (name: string) => {
   return name?.split(" ")[0];
 };
 
-
-
 export const openSidePanel = async () => {
   try {
     const [tab] = await browser.tabs.query({
@@ -77,6 +75,7 @@ export const getRandomUrl = async (): Promise<string> => {
     visitedLinkIds: [...visited],
     activeLink: randomLink,
   });
+
   markAsVisited(randomLink);
 
   return randomLink?.target_url;
@@ -118,7 +117,8 @@ export const updateCount = async () => {
 export const makeCall = async (
   endpoint: string,
   options: RequestInit = {},
-  timeout = 6000 // in milliseconds
+  timeout = 10000,
+  addContentTypeHeader = true
 ) => {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
@@ -131,7 +131,15 @@ export const makeCall = async (
       ...options,
       signal: controller.signal,
       headers: {
-        "Content-Type": "application/json",
+        ...options.headers,
+        ...(addContentTypeHeader && {
+          "Content-Type":
+            typeof options.headers === "object" &&
+            options.headers !== null &&
+            "Content-Type" in options.headers
+              ? (options.headers as Record<string, string>)["Content-Type"]
+              : "application/json",
+        }),
         Authorization: `Bearer ${token.gqlToken}`,
       },
     });
@@ -355,4 +363,32 @@ export const makeCommentsCall = async (
 export function capitalizeFirstLetter(str: string): string {
   if (!str) return str;
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+export async function fileToBuffer(file: File): Promise<ArrayBuffer> {
+  return await file.arrayBuffer();
+}
+
+export function timeAgo(date: Date): string {
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - date?.getTime()) / 1000); // in seconds
+
+  if (diff < 60) {
+    return `${diff}s ago`;
+  } else if (diff < 3600) {
+    const minutes = Math.floor(diff / 60);
+    return `${minutes}m ago`;
+  } else if (diff < 86400) {
+    const hours = Math.floor(diff / 3600);
+    return `${hours}h ago`;
+  } else if (diff < 2592000) {
+    const days = Math.floor(diff / 86400);
+    return `${days}d ago`;
+  } else if (diff < 31536000) {
+    const months = Math.floor(diff / 2592000);
+    return `${months}mo ago`;
+  } else {
+    const years = Math.floor(diff / 31536000);
+    return `${years}y ago`;
+  }
 }

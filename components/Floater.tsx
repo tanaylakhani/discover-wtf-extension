@@ -1,15 +1,6 @@
 import "@/entrypoints/style.css";
-import { useLike } from "@/hooks/useLike";
 import { PublicRandomLink } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  AnnotationDots,
-  Bookmark,
-  HeartRounded,
-  MagicWand01,
-  Plus,
-} from "@untitled-ui/icons-react";
-import { AnimatePresence, motion } from "framer-motion";
 import React, { useState } from "react";
 import ToolbarApp from "./Toolbar";
 type FloaterProps = {

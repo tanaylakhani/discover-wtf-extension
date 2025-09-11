@@ -3,21 +3,22 @@
 import { cn, PublicRandomLink, TUser } from "@/lib/utils";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { UIMessage } from "ai";
-import HardenReactMarkdown from "harden-react-markdown";
+import hardenReactMarkdown from "harden-react-markdown";
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import useMeasure from "react-use-measure";
+import remarkGfm from "remark-gfm";
+import { CodeBlock, CodeBlockCopyButton } from "../ai-elements/code-block";
 import {
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
 } from "../ai-elements/prompt-input";
+import { PageData } from "../Sidebar";
 import { ScrollArea } from "../ui/scroll-area";
-import useMeasure from "react-use-measure";
-import hardenReactMarkdown from "harden-react-markdown";
-import ReactMarkdown, { type Options } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { CodeBlock, CodeBlockCopyButton } from "../ai-elements/code-block";
-
+import { Skeleton } from "../ui/skeleton";
+import { v4 as uuid } from "uuid";
 type Message = {
   role: "user" | "assistant";
   content: string;
@@ -29,28 +30,42 @@ type AskTabProps = {
   user?: TUser;
   height: number;
   messages: UIMessage[];
+  pageData: PageData;
   setMessages: (messages: UIMessage[]) => void;
+  suggestedPrompts: string[];
+  isSuggestedPromptsLoading?: boolean;
 };
 
-const AskTab = ({ user, height, messages, setMessages }: AskTabProps) => {
+const AskTab = ({
+  height,
+  messages,
+  setMessages,
+  suggestedPrompts,
+  isSuggestedPromptsLoading,
+  pageData,
+}: AskTabProps) => {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Show loading when last message is from user and waiting for assistant
+  const isAwaitingAssistant =
+    messages.length > 0 &&
+    messages[messages.length - 1].role === "user" &&
+    loading;
   const HardenedMarkdown = hardenReactMarkdown(ReactMarkdown);
   const [ref, bounds] = useMeasure();
   const scrollAreaHeight = `calc(100vh - ${height + bounds?.height}px)`;
   const viewportRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const initialPrompts = [
-    "Summarize the page I’m currently viewing",
-    "List the key takeaways from this content",
-    "Explain this article in simple terms",
-    "Give me a quick 2-sentence summary",
-  ];
   const sendMessage = (msg: string) => {
     if (!input.trim()) return;
-
+    if (!pageData) {
+      alert("Page data is not available.");
+      return;
+    }
     const newMessage: UIMessage = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       role: "user",
       parts: [
         {
@@ -64,23 +79,35 @@ const AskTab = ({ user, height, messages, setMessages }: AskTabProps) => {
     const updated = [...messages, newMessage] as UIMessage[];
     setMessages(updated);
 
+    // Set loading state to true (waiting for assistant)
+    setLoading(true);
+
     // Reset input
     setInput("");
 
     // Send to background
     browser.runtime.sendMessage({
       type: "chat_request",
-      payload: { messages: updated },
+      payload: { messages: updated, pageData: pageData },
     });
   };
+  // Scroll to bottom when messages change
   useEffect(() => {
-    if (viewportRef.current) {
-      viewportRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages?.length]);
+  }, [messages]);
+
+  // Set loading to false when assistant responds
+  useEffect(() => {
+    if (
+      messages.length > 0 &&
+      messages[messages.length - 1].role === "assistant"
+    ) {
+      setLoading(false);
+    }
+  }, [messages]);
+
   const components = {
     ol: ({ node, children, className, ...props }: any) => (
       <ol
@@ -217,40 +244,50 @@ const AskTab = ({ user, height, messages, setMessages }: AskTabProps) => {
         className="w-full relative overflow-y-auto"
       >
         <ScrollAreaPrimitive.Viewport>
-          <div ref={viewportRef} className="px-2 w-full relative">
+          <div ref={viewportRef} className="w-full relative">
             {messages.length === 0 ? (
-              <div className="mx-auto flex w-full flex-col items-center justify-center py-20">
-                <h3 className="text-2xl font-medium tracking-tight">
-                  Hi, {user?.name?.split(" ")[0]}
+              <div className="mx-auto px-6 flex w-full flex-col items-center justify-center mb-12 pt-10">
+                <h3 className="text-lg font-medium tracking-tight">
+                  Discover.wtf AI
                 </h3>
-                <span className="text-lg font-medium tracking-tight text-neutral-500">
-                  How can I assist you today?
+                <span className="text-neutral-700 text-sm">
+                  Ask anything about this page
                 </span>
-                <div className="grid relative px-6 grid-cols-1 gap-2 mt-4">
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-300 via-pink-300 to-orange-300 opacity-60 blur-xl"></div>
-                  {initialPrompts.map((prompt, i) => (
-                    <div
-                      key={i}
-                      onClick={() => {
-                        sendMessage(prompt);
-                      }}
-                      className="bg-white z-[2] p-4 leading-tight cursor-pointer hover:bg-neutral-50 rounded-xl border border-neutral-300 font-medium tracking-tight text-sm text-neutral-700"
-                    >
-                      {prompt}
-                    </div>
-                  ))}
+                <div className="mt-10 flex flex-col space-y-3 w-full">
+                  {isSuggestedPromptsLoading
+                    ? [...Array(4)].map((_, i) => (
+                        <Skeleton
+                          key={i}
+                          className="w-full bg-neutral-200 rounded-xl h-14 "
+                        />
+                      ))
+                    : suggestedPrompts.map((prompt, i) => (
+                        <div
+                          key={i}
+                          onClick={() => {
+                            setInput(prompt);
+                          }}
+                          className="bg-white z-[2] p-4 leading-tight cursor-pointer hover:bg-neutral-50 rounded-xl border border-neutral-300 font-medium tracking-tight text-sm text-neutral-700"
+                        >
+                          {prompt}
+                        </div>
+                      ))}
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col px-3 space-y-4 py-4">
+              <div className="flex flex-col px-4 space-y-4 py-4 max-w-full">
                 {messages.map((m) => (
                   <div
                     key={m.id}
                     className={`mb-2 ${
                       m.role === "user"
-                        ? "bg-orange-100 p-2 rounded-xl text-orange-800 self-start"
-                        : " self-end"
+                        ? "bg-orange-100 max-w-[80%] break-words overflow-wrap break-word whitespace-pre-wrap py-2 px-4 rounded-xl text-orange-800 self-end"
+                        : "self-start max-w-[95%] break-words overflow-wrap break-word whitespace-pre-wrap"
                     }`}
+                    style={{
+                      wordBreak: "break-word",
+                      overflowWrap: "break-word",
+                    }}
                   >
                     {m.parts.map((p, i) =>
                       p.type === "text" ? (
@@ -265,6 +302,14 @@ const AskTab = ({ user, height, messages, setMessages }: AskTabProps) => {
                     )}
                   </div>
                 ))}
+                {isAwaitingAssistant && (
+                  <div className="mb-2 self-start max-w-[95%] p-2 rounded-xl bg-neutral-100 animate-pulse">
+                    <span className="text-neutral-400">
+                      Assistant is typing…
+                    </span>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
             )}
           </div>

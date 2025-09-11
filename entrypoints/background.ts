@@ -1,4 +1,6 @@
+import { TCommentAuthor } from "@/components/sidepanel/ThreadsTab";
 import URL from "@/lib/url";
+import { UIMessage } from "ai";
 import {
   animateGlobeIcon,
   fetchInitialLinks,
@@ -6,12 +8,9 @@ import {
   hasDiscoverHistoryParam,
   isValidUrl,
   makeCall,
-  makeCommentsCall,
   updateCount,
 } from "../lib/utils";
-import { TCommentAuthor } from "@/components/sidepanel/ThreadsTab";
-import { UIMessage } from "ai";
-import { error } from "console";
+import { PageData } from "@/components/Sidebar";
 
 // Global variables to store the extension tab ID and window ID
 let extensionTabId: number | null = null;
@@ -274,29 +273,38 @@ async function handleMessage(
           linkId,
           message: content,
           user,
-          files,
+          file,
+          parentId,
         }: {
           message: string;
           linkId: string;
-          files: File[];
+          file?: { name: string; type: string; buffer: Uint8Array };
           user: TCommentAuthor;
+          parentId?: string;
         } = message;
-        // If you want to support files, you'll need to handle them (e.g., base64 or other method)
+        console.log({ message });
         const formData = new FormData();
         formData.append("content", content);
         formData.append("user", JSON.stringify(user));
-        if (files.length > 0) {
-          formData.append("file", files[0]);
+        // Create Blob
+        if (file) {
+          const reconstructedBuffer = new Uint8Array(file?.buffer).buffer;
+          const blob = new Blob([reconstructedBuffer], { type: file?.type });
+          formData.append("file", blob, file.name);
         }
-        // If you want to support files, add them here
+        if (parentId) {
+          formData.append("parentId", parentId);
+        }
 
         const stringifiedParams = new URLSearchParams({ linkId }).toString();
-        const response = await makeCommentsCall(
+        const response = await makeCall(
           `/comment?${stringifiedParams}`,
           {
             method: "POST",
             body: formData,
-          }
+          },
+          6000,
+          false
         );
         sendResponse({ comment: response.comment });
       } catch (error) {
@@ -308,6 +316,121 @@ async function handleMessage(
     case "chat_request":
       handleChatRequest(message, sender, sendResponse);
       break;
+
+    case "EXTRACT_CONTENT": {
+      const { url } = message;
+      if (!url) {
+        sendResponse({ success: false, error: "No URL provided" });
+      }
+      try {
+        // Use makeCall to fetch markdown from /api/extract
+        const stringifiedParams = new URLSearchParams({ url }).toString();
+        const resp = await makeCall(
+          `/extract?${stringifiedParams}`,
+          {
+            method: "POST",
+          },
+          50000
+        );
+        const markdown = resp?.output;
+        console.log({ resp });
+        await browser.storage.local.set({ extractedMarkdown: markdown });
+        sendResponse({ success: true });
+      } catch (err) {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      break;
+    }
+    case "GET_SUGGESTED_PROMPTS": {
+      const { pageData }: { pageData: PageData } = message.payload;
+
+      const markdown = `
+      #${pageData?.title}
+      ${pageData?.content}
+      `;
+
+      try {
+        const res = await fetch(`${URL}/api/chat/suggested`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            markdown: markdown,
+          }),
+        });
+        const data = await res.json();
+        console.log({ data });
+        if (!res.ok || !data?.success) {
+          throw new Error(`API error: ${data?.error}`);
+        }
+        sendResponse({ success: true, prompts: data?.prompts || [] });
+      } catch (err) {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      break;
+    }
+    case "GET_COMMENT_LIKE_STATUS": {
+      try {
+        const { commentId } = message;
+        if (!commentId) {
+          sendResponse({
+            liked: false,
+            likeCount: 0,
+            error: "Missing commentId or userId",
+          });
+          break;
+        }
+        const url = `/comment/like?commentId=${encodeURIComponent(commentId)}`;
+        const data = await makeCall(url, undefined, 10000);
+        sendResponse({
+          liked: data?.data?.liked ?? false,
+          likeCount: data?.data?.count ?? 0,
+          error: data?.error || null,
+        });
+      } catch (error) {
+        sendResponse({
+          liked: false,
+          likeCount: 0,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    }
+    case "LIKE_COMMENT": {
+      try {
+        const { commentId, liked } = message;
+        if (!commentId) {
+          sendResponse({
+            success: false,
+            error: "Missing commentId",
+          });
+        }
+
+        // Toggle like
+        const postUrl = `/comment/like?commentId=${encodeURIComponent(
+          commentId
+        )}`;
+        const postData = await makeCall(postUrl, {
+          method: "POST",
+          body: JSON.stringify({ liked: !liked }),
+        });
+        sendResponse({
+          success: postData?.success,
+          error: postData?.error || null,
+        });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    }
   }
 }
 
@@ -316,13 +439,22 @@ async function handleChatRequest(
   sender: Browser.runtime.MessageSender,
   sendResponse?: (response?: any) => void
 ) {
-  const { messages }: { messages: UIMessage[] } = message.payload;
+  const { messages, pageData }: { messages: UIMessage[]; pageData: PageData } =
+    message.payload;
+
+  const markdown = `
+      #${pageData?.title}
+      ${pageData?.content}
+      `;
+
+  console.log({ markdown, pageData });
   try {
     const res = await fetch(`${URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: messages,
+        ctx: markdown,
       }),
     });
 

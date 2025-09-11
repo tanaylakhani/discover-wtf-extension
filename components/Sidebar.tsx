@@ -20,6 +20,7 @@ import AskTab from "./sidepanel/AskTab";
 import HistoryTab from "./sidepanel/HistoryTab";
 import InfoTab from "./sidepanel/InfoTab";
 import ThreadsTab from "./sidepanel/ThreadsTab";
+import { useEffect } from "react";
 
 export const tabsIcon = {
   history: History,
@@ -35,8 +36,16 @@ type SidebarProps = {
   messages: UIMessage[];
   setMessages: (messages: UIMessage[]) => void;
   activeTab: keyof typeof tabsIcon;
+  activeLink: PublicRandomLink | null;
   setActiveTab: (tab: keyof typeof tabsIcon) => void;
 };
+
+export interface PageData {
+  url: string;
+  title: string;
+  content: string;
+  metaDescription: string;
+}
 
 const Sidebar = ({
   isOpen,
@@ -45,10 +54,12 @@ const Sidebar = ({
   setMessages,
   activeTab,
   setActiveTab,
+  activeLink,
 }: SidebarProps) => {
+  const [pageData, setPageData] = React.useState<PageData | null>(null);
   const [ref, bounds] = useMeasure();
-  const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(null);
-
+  const [suggestedPromptsLoading, setSuggestedPromptsLoading] = useState(false);
+  const [suggestedPrompts, setSuggestedPrompts] = React.useState<string[]>([]);
   const { data, isLoading } = useQuery({
     queryKey: ["get-user"],
     queryFn: async () => {
@@ -58,6 +69,151 @@ const Sidebar = ({
       return resp?.data as TUser;
     },
   });
+
+  const extractPageData = () => {
+    try {
+      const url = window.location.href;
+      const title = document.title;
+      const metaDescription =
+        document
+          .querySelector('meta[name="description"]')
+          ?.getAttribute("content") || "";
+
+      // Function to clean and extract text content
+      const cleanTextContent = (element: Element): string => {
+        const clone = element.cloneNode(true) as Element;
+
+        // Remove script, style, noscript tags and their content
+        const unwantedTags = [
+          "script",
+          "style",
+          "noscript",
+          "nav",
+          "header",
+          "footer",
+          "aside",
+        ];
+        unwantedTags.forEach((tag) => {
+          const elements = clone.querySelectorAll(tag);
+          elements.forEach((el) => el.remove());
+        });
+
+        // Remove elements that are likely navigation or non-content
+        const unwantedSelectors = [
+          '[class*="nav"]',
+          '[class*="menu"]',
+          '[class*="sidebar"]',
+          '[class*="footer"]',
+          '[class*="header"]',
+          '[class*="banner"]',
+          '[class*="advertisement"]',
+          '[class*="ads"]',
+          '[role="navigation"]',
+          '[role="banner"]',
+          '[role="complementary"]',
+        ];
+
+        unwantedSelectors.forEach((selector) => {
+          try {
+            const elements = clone.querySelectorAll(selector);
+            elements.forEach((el) => el.remove());
+          } catch (e) {
+            // Continue if selector is invalid
+          }
+        });
+
+        // Get text content and clean it up
+        let text = clone.textContent || "";
+
+        // Clean up whitespace
+        text = text
+          .replace(/\s+/g, " ") // Replace multiple whitespace with single space
+          .replace(/\n\s*\n/g, "\n") // Replace multiple newlines with single newline
+          .trim();
+
+        return text;
+      };
+
+      // Extract main content - try various selectors in order of preference
+      const contentSelectors = [
+        "main",
+        "article",
+        '[role="main"]',
+        ".content",
+        "#content",
+        ".post-content",
+        ".entry-content",
+        ".page-content",
+        ".article-content",
+        ".blog-content",
+        ".story-content",
+        ".text-content",
+        "body",
+      ];
+
+      let content = "";
+      for (const selector of contentSelectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          content = cleanTextContent(element);
+          // If we found substantial content, use it
+          if (content.length > 100) {
+            break;
+          }
+        }
+      }
+
+      // If still no good content, try to get all visible text from body
+      if (!content || content.length < 100) {
+        const bodyElement = document.body;
+        if (bodyElement) {
+          content = cleanTextContent(bodyElement);
+        }
+      }
+
+      console.log(`📄 Extracted page data:`, {
+        url,
+        title,
+        contentLength: content.length,
+        metaDescription,
+        contentPreview: content.substring(0, 200) + "...",
+      });
+
+      const newPageData = { url, title, content, metaDescription };
+      setPageData(newPageData);
+    } catch (err) {
+      console.error("Error extracting page data:", err);
+    }
+  };
+
+  useEffect(() => {
+    extractPageData();
+  }, []);
+
+  useEffect(() => {
+    if (!pageData) return;
+    const fetchSuggestedPrompts = async () => {
+      try {
+        setSuggestedPromptsLoading(true);
+        const resp = await browser.runtime.sendMessage({
+          type: "GET_SUGGESTED_PROMPTS",
+          payload: {
+            pageData: pageData,
+          },
+        });
+        if (resp?.success && Array.isArray(resp.prompts)) {
+          setSuggestedPromptsLoading(false);
+          const promptsToSave = resp.prompts;
+          setSuggestedPrompts(promptsToSave);
+          // await browser.storage.local.set({ suggestedPrompts: promptsToSave });
+        }
+      } catch (err) {
+        setSuggestedPromptsLoading(false);
+        console.error("Error fetching suggested prompts:", err);
+      }
+    };
+    fetchSuggestedPrompts();
+  }, [pageData]);
 
   const tabs = {
     history: (
@@ -83,35 +239,15 @@ const Sidebar = ({
         user={data as TUser}
         activeLink={activeLink}
         activeTab={activeTab}
+        pageData={pageData as PageData}
+        suggestedPrompts={suggestedPrompts}
+        isSuggestedPromptsLoading={suggestedPromptsLoading}
       />
     ),
     // usage: <>Usage</>,
     info: <InfoTab activeLink={activeLink} activeTab={activeTab} />,
   };
 
-  useEffect(() => {
-    const initialActiveLink = async () => {
-      const link = await browser.storage.local.get("activeLink");
-      setActiveLink(link?.activeLink);
-      console.log({ link: link?.activeLink });
-    };
-    initialActiveLink();
-
-    const listener = (
-      changes: Record<string, Browser.storage.StorageChange>,
-      area: string
-    ) => {
-      if (area === "local" && changes.activeLink) {
-        setActiveLink(changes.activeLink.newValue ?? null);
-      }
-    };
-
-    browser.storage.onChanged.addListener(listener);
-
-    return () => {
-      browser.storage.onChanged.removeListener(listener);
-    };
-  }, []);
   useEffect(() => {
     const getInitialActiveSidePanelTabState = async () => {
       browser.storage.local.get("activeSidePanelTab").then((res) => {

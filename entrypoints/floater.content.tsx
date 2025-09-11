@@ -67,10 +67,14 @@ export default defineContentScript({
           onMount: (container) => {
             const wrapper = document.createElement("div");
             wrapper.id = "floater-wrapper";
+            const wrapperStyle = document.createElement("style");
+            wrapperStyle.id = "floating-toolbar-wrapper-override";
             wrapper.style.zIndex = "2147483647";
-
             container.append(wrapper);
 
+            setTimeout(() => {
+              document.head.appendChild(wrapperStyle);
+            }, 100);
             const root = ReactDOM.createRoot(wrapper);
             root.render(
               // <AuthProvider>

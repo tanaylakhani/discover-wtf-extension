@@ -173,7 +173,7 @@ export type ResponseProps = HTMLAttributes<HTMLDivElement> & {
   parseIncompleteMarkdown?: boolean;
 };
 
-const components: Options["components"] = {
+export const components: Options["components"] = {
   ol: ({ node, children, className, ...props }) => (
     <ol className={cn("ml-4 list-outside list-decimal", className)} {...props}>
       {children}

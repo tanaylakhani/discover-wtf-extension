@@ -1,5 +1,10 @@
 "use client";
-import { makeCall, makeCommentsCall, PublicRandomLink } from "@/lib/utils";
+import {
+  fileToBuffer,
+  makeCall,
+  makeCommentsCall,
+  PublicRandomLink,
+} from "@/lib/utils";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React from "react";
@@ -9,6 +14,9 @@ import { Skeleton } from "../ui/skeleton";
 import ThreadChatBox from "./ThreadChatBox";
 import { User } from "@/lib/graphql/user";
 import CommentCard from "./comment";
+import { Button } from "../ui/button";
+import { ListFilter } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 export type TCommentAuthor = {
   id: string;
@@ -27,6 +35,8 @@ export type Comment = {
   isPrivate: boolean;
   commentedAt: Date;
   media: { id: string; url: string; type: string; createdAt: Date }[] | null;
+  parentId?: string | null; // 👈 parent reference
+  replies?: Comment[];
 };
 
 type ThreadsTabProps = {
@@ -36,16 +46,23 @@ type ThreadsTabProps = {
   height: number;
 };
 
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+  { value: "most_replied", label: "Most Replied" },
+  { value: "least_replied", label: "Least Replied" },
+];
+
 const ThreadsTab: React.FC<ThreadsTabProps> = ({
   activeLink,
   user,
   height,
 }) => {
   const queryClient = useQueryClient();
-
+  const [toReply, setToReply] = React.useState<Comment | null>(null);
   const [input, setInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
-
+  const [sortOption, setSortOption] = React.useState(SORT_OPTIONS[0].value);
   const {
     data,
     isLoading: isFetchingComments,
@@ -58,7 +75,8 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
         linkId: activeLink?.id as string,
       });
       console.log("fetching comments", response);
-      return (response?.comments || []) as Comment[];
+      const flatComments = (response?.comments || []) as Comment[];
+      return flatComments; // 👈 return nested tree
     },
     // enabled: !!activeLink?.id,
   });
@@ -68,32 +86,43 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
       files,
       message,
       user,
+      parentId,
     }: {
       message: string;
       files: File[];
       user: TCommentAuthor;
+      parentId?: string | null;
     }) => {
-      // Convert files to base64 or send as needed, or just send metadata if not supported
-      // For simplicity, we'll skip file upload in this refactor, but you can adapt as needed
+      let filePayload = undefined;
+      if (files[0]) {
+        const buffer = await fileToBuffer(files[0]);
+        const uint8Array = new Uint8Array(buffer);
+        filePayload = {
+          buffer: Array.from(uint8Array),
+          type: files[0]?.type,
+          name: files[0]?.name,
+        };
+      }
+
       const response = await browser.runtime.sendMessage({
         type: "POST_COMMENT",
         linkId: activeLink?.id as string,
         message,
-        files,
+        file: filePayload,
         user,
-        // Optionally: files
+        parentId: parentId || null,
       });
       return response.comment;
     },
 
-    // Optimistic update
-    onMutate: async ({ message, files, user }) => {
+    onMutate: async ({ message, files, user, parentId }) => {
       setInput("");
       setFiles([]);
 
       await queryClient.cancelQueries({
         queryKey: ["get-comments", activeLink?.id as string],
       });
+
       const previousComments = queryClient.getQueryData<Comment[]>([
         "get-comments",
         activeLink?.id,
@@ -104,7 +133,7 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
         linkId: activeLink?.id || "",
         userId: user?.id,
         content: message,
-        user: user,
+        user,
         isPrivate: false,
         commentedAt: new Date(),
         media: files.length
@@ -117,62 +146,80 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
               },
             ]
           : null,
+        parentId: parentId || null,
+        replies: [],
       };
 
       queryClient.setQueryData<Comment[]>(
         ["get-comments", activeLink?.id],
-        (old) => [optimisticComment, ...(old || [])]
-      );
+        (old) => {
+          if (!old) return [optimisticComment];
 
-      return { previousComments, optimisticComment, message, files };
-    },
-    // On success, replace optimistic comment with real data
-    onSuccess: (newComment, variables, context) => {
-      console.log("🎉 onSuccess called with:", newComment);
+          if (!parentId) {
+            // Top-level comment → prepend
+            return [optimisticComment, ...old];
+          }
 
-      queryClient.setQueryData<Comment[]>(
-        ["get-comments", activeLink?.id],
-        (oldComments) => {
-          if (!oldComments || !context?.optimisticComment) return oldComments;
+          // Reply → insert into parent
+          const insertReply = (comments: Comment[]): Comment[] =>
+            comments.map((c) => {
+              if (c.id === parentId) {
+                return {
+                  ...c,
+                  replies: [...(c.replies || []), optimisticComment],
+                };
+              }
+              return {
+                ...c,
+                replies: c.replies ? insertReply(c.replies) : [],
+              };
+            });
 
-          // Replace the optimistic comment with the real one
-          const updatedComments = oldComments.map((comment) =>
-            comment.id === context.optimisticComment.id ? newComment : comment
-          );
-          console.log(
-            "🔄 Replacing optimistic with real comment:",
-            updatedComments
-          );
-          return updatedComments;
+          return insertReply(old);
         }
       );
 
-      // Clear the input on success
-      setInput("");
-      setFiles([]);
+      return { previousComments, optimisticComment, parentId, message, files };
     },
 
-    // On error, rollback to previous state
-    onError: (error, variables, context) => {
-      console.log("❌ onError called:", error);
+    onSuccess: (newComment, _, context) => {
+      if (toReply && newComment.parentId !== toReply.id) {
+        setToReply(null);
+      }
+      queryClient.setQueryData<Comment[]>(
+        ["get-comments", activeLink?.id],
+        (old) => {
+          if (!old || !context?.optimisticComment) return old;
 
+          const replaceOptimistic = (comments: Comment[]): Comment[] =>
+            comments.map((c) => {
+              if (c.id === context.optimisticComment.id) return newComment;
+              return {
+                ...c,
+                replies: c.replies ? replaceOptimistic(c.replies) : [],
+              };
+            });
+
+          return replaceOptimistic(old);
+        }
+      );
+    },
+
+    onError: (error, _, context) => {
       if (context?.previousComments) {
         queryClient.setQueryData(
           ["get-comments", activeLink?.id],
           context.previousComments
         );
-        console.log("🔙 Rolled back to previous comments");
       }
       if (context?.message || context?.files) {
-        setInput(context.message); // Repopulate input with failed message
-        setFiles(context.files); // Repopulate files with failed files
+        setInput(context.message);
+        setFiles(context.files);
       }
       console.error("Failed to post comment:", error);
     },
 
-    // Always refetch after error or success to ensure consistency
     onSettled: () => {
-      console.log("🔄 onSettled called, invalidating queries");
       queryClient.invalidateQueries({
         queryKey: ["get-comments", activeLink?.id],
       });
@@ -180,7 +227,10 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
   });
 
   const [ref, bounds] = useMeasure();
-  const scrollAreaHeight = `calc(100vh - ${height + bounds?.height}px)`;
+  const [commentOptionsBar, barBounds] = useMeasure();
+  const scrollAreaHeight = `calc(100vh - ${
+    height + bounds?.height + barBounds.height
+  }px)`;
   const viewportRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -191,9 +241,65 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
       });
     }
   }, [data?.length]);
-  console.log(data?.length);
+
+  // Prefetch like status/count for all comments and replies
+  React.useEffect(() => {
+    if (!data) return;
+    // Helper to recursively collect all comment IDs
+    const collectIds = (comments: Comment[]): string[] => {
+      let ids: string[] = [];
+      for (const c of comments) {
+        ids.push(c.id);
+        if (c.replies && c.replies.length > 0) {
+          ids = ids.concat(collectIds(c.replies));
+        }
+      }
+      return ids;
+    };
+    const allIds = collectIds(data);
+    allIds.forEach((commentId) => {
+      queryClient.prefetchQuery({
+        queryKey: ["comment-like-status", commentId],
+        queryFn: async () => {
+          const response = await browser.runtime.sendMessage({
+            type: "GET_COMMENT_LIKE_STATUS",
+            commentId,
+          });
+          return response;
+        },
+      });
+    });
+  }, [data, queryClient]);
+
   return (
     <div className="">
+      <div
+        ref={commentOptionsBar}
+        className="px-4 py-2 flex items-center justify-between border-b border-neutral-200"
+      >
+        <div>Comments ({data?.length || 0})</div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button size={"icon"} variant={"outline"}>
+              <ListFilter />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent>
+            {SORT_OPTIONS.map((option) => {
+              return (
+                <Button
+                  key={option.value}
+                  variant="ghost"
+                  className="w-full justify-start"
+                  onClick={() => setSortOption(option.value)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </PopoverContent>
+        </Popover>
+      </div>
       {isFetchingComments ? (
         <LoadingSkeleton />
       ) : data!.length === 0 ? (
@@ -206,7 +312,12 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
           <ScrollAreaPrimitive.Viewport>
             <div ref={viewportRef} className="mb-10">
               {data!.map((comment, index) => (
-                <CommentCard comment={comment} key={index} />
+                <CommentCard
+                  toReply={toReply}
+                  onReplyClick={setToReply}
+                  comment={comment}
+                  key={index}
+                />
               ))}
             </div>
           </ScrollAreaPrimitive.Viewport>
@@ -235,6 +346,7 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
                   email: user!.email,
                   username: user!.username,
                 },
+                parentId: toReply?.id || null,
               });
             } catch (error) {
               console.error("Failed to submit comment:", error);
@@ -252,12 +364,12 @@ export const LoadingSkeleton = () => {
       {[...Array.from({ length: 10 })].map((_, index) => (
         <div
           key={index}
-          className="px-2 bg-white shadow-sm pt-2 pb-4 border last:mb-24 border-neutral-200 first:mt-0 mt-2 rounded-xl"
+          className="px-2 bg-white py-2 last:mb-24 first:mt-0 mt-2 flex items-center justify-center"
         >
-          <Skeleton className="border h-[160px] w-full object-cover overflow-hidden bg-neutral-200 border-neutral-200 rounded-xl" />
-          <div className="mt-2 space-y-2">
-            <Skeleton className="bg-neutral-200 flex flex-col items-start justify-center px-4 h-8 w-full" />
-            <Skeleton className="bg-neutral-200 h-6 w-full" />
+          <Skeleton className="border size-14 object-cover overflow-hidden bg-neutral-200 border-neutral-200 rounded-xl" />
+          <div className="ml-2 flex-1 flex flex-col w-full space-y-2">
+            <Skeleton className="bg-neutral-200 flex flex-col items-start justify-center px-4 h-6 w-full" />
+            <Skeleton className="bg-neutral-200 h-4 w-full" />
           </div>
         </div>
       ))}
