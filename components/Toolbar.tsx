@@ -14,7 +14,7 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import Sidebar from "./Sidebar";
+
 type ToolbarProps = {
   activeLink?: PublicRandomLink | null;
   addToHistory: UseMutationResult<
@@ -26,11 +26,14 @@ type ToolbarProps = {
     }
   >;
 };
+export interface PageData {
+  url: string;
+  title: string;
+  content: string;
+  metaDescription: string;
+}
 
 function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
-  const [isBrowserAgentOpen, setIsBrowserAgentOpen] = useState(false);
-  const [messages, setMessages] = useState<UIMessage[]>([]);
-  const [activeTab, setActiveTab] = useState<keyof typeof tabsIcon>("history");
   const {
     liked,
     toggleLike,
@@ -44,82 +47,123 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
   } = useBookmark(activeLink?.id as string);
   const bookmarkData = bookmarkQuery?.data;
 
-  useEffect(() => {
-    const messageHandler = async (message: any) => {
-      console.log("Received message:", message);
+  const extractPageData = () => {
+    try {
+      const url = window.location.href;
+      const title = document.title;
+      const metaDescription =
+        document
+          .querySelector('meta[name="description"]')
+          ?.getAttribute("content") || "";
 
-      switch (message.type) {
-        case "MARK_AS_VISITED": {
-          const linkId = message?.data?.linkId as string;
-          console.log("inside markAsVisited floater:", linkId);
+      // Function to clean and extract text content
+      const cleanTextContent = (element: Element): string => {
+        const clone = element.cloneNode(true) as Element;
 
-          addToHistory.mutate(undefined, {
-            onSuccess: () => {
-              console.log("✅ Successfully added to history:", linkId);
-            },
-            onError: (error: any) => {
-              console.error("❌ Error adding to history:", error);
-            },
-          });
-          break;
+        // Remove script, style, noscript tags and their content
+        const unwantedTags = [
+          "script",
+          "style",
+          "noscript",
+          "nav",
+          "header",
+          "footer",
+          "aside",
+        ];
+        unwantedTags.forEach((tag) => {
+          const elements = clone.querySelectorAll(tag);
+          elements.forEach((el) => el.remove());
+        });
+
+        // Remove elements that are likely navigation or non-content
+        const unwantedSelectors = [
+          '[class*="nav"]',
+          '[class*="menu"]',
+          '[class*="sidebar"]',
+          '[class*="footer"]',
+          '[class*="header"]',
+          '[class*="banner"]',
+          '[class*="advertisement"]',
+          '[class*="ads"]',
+          '[role="navigation"]',
+          '[role="banner"]',
+          '[role="complementary"]',
+        ];
+
+        unwantedSelectors.forEach((selector) => {
+          try {
+            const elements = clone.querySelectorAll(selector);
+            elements.forEach((el) => el.remove());
+          } catch (e) {
+            // Continue if selector is invalid
+          }
+        });
+
+        // Get text content and clean it up
+        let text = clone.textContent || "";
+
+        // Clean up whitespace
+        text = text
+          .replace(/\s+/g, " ") // Replace multiple whitespace with single space
+          .replace(/\n\s*\n/g, "\n") // Replace multiple newlines with single newline
+          .trim();
+
+        return text;
+      };
+
+      // Extract main content - try various selectors in order of preference
+      const contentSelectors = [
+        "main",
+        "article",
+        '[role="main"]',
+        ".content",
+        "#content",
+        ".post-content",
+        ".entry-content",
+        ".page-content",
+        ".article-content",
+        ".blog-content",
+        ".story-content",
+        ".text-content",
+        "body",
+      ];
+
+      let content = "";
+      for (const selector of contentSelectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          content = cleanTextContent(element);
+          // If we found substantial content, use it
+          if (content.length > 100) {
+            break;
+          }
         }
-        case "CHAT_CHUNK": {
-          console.log({ chatChunk: message.data });
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.role === "assistant") {
-              return [
-                ...prev.slice(0, -1),
-                {
-                  ...last,
-                  parts: [
-                    {
-                      ...last.parts[0],
-                      text:
-                        last.parts[0].type === "text"
-                          ? last.parts[0].text + message.data
-                          : message.data,
-                    },
-                  ],
-                },
-              ];
-            }
-            return [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: "assistant",
-                parts: [{ text: message?.data, type: "text" }],
-              },
-            ];
-          });
-          break;
-        }
-        case "CHAT_DONE": {
-          console.log("Stream finished");
-          break;
-        }
-        case "CHAT_ERROR": {
-          console.error("Chat error:", message.error);
-          break;
-        }
-        default:
-          break;
       }
-    };
 
-    const listener = (message: any) => {
-      console.log("_________Inside Message Handler Sidebar__________");
-      messageHandler(message);
-      // no need for return true unless using sendResponse
-    };
+      // If still no good content, try to get all visible text from body
+      if (!content || content.length < 100) {
+        const bodyElement = document.body;
+        if (bodyElement) {
+          content = cleanTextContent(bodyElement);
+        }
+      }
+      const extractedPageData = { url, title, content, metaDescription };
 
-    browser.runtime.onMessage.addListener(listener);
+      console.log(`📄 Extracted page data:`, {
+        ...extractPageData,
+        contentPreview: content.substring(0, 200) + "...",
+      });
+      browser.storage.local.set({
+        pageData: extractedPageData,
+      });
+    } catch (err) {
+      console.error("Error extracting page data:", err);
+    }
+  };
 
-    return () => {
-      browser.runtime.onMessage.removeListener(listener);
-    };
-  }, [addToHistory, activeLink]);
+  useEffect(() => {
+    extractPageData();
+  }, []);
 
   const toolbarButtons = [
     {
@@ -130,7 +174,6 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
       onClick: (e?: Event) => {
         e?.preventDefault();
         e?.stopPropagation();
-        setIsBrowserAgentOpen(true);
       },
     },
     {
@@ -150,11 +193,11 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
       id: "comments",
       icon: <MessageCircle size={16} />,
       tooltip: "Comments",
-      onClick: (e?: Event) => {
+      onClick: async (e?: Event) => {
         e?.preventDefault();
         e?.stopPropagation();
-        setActiveTab("comments");
-        setIsBrowserAgentOpen(true);
+        await browser.storage.local.set({ activeSidePanelTab: "comments" });
+        browser.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
         // console.log('Memory Agent clicked');
         // You can add your memory agent logic here
       },
@@ -182,13 +225,11 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
       icon: <SparklesIcon size={16} />,
       tooltip: "Ask",
 
-      onClick: (e?: Event) => {
+      onClick: async (e?: Event) => {
         e?.preventDefault();
         e?.stopPropagation();
-        setActiveTab("ask");
-        setIsBrowserAgentOpen(true);
-        // console.log('Memory Agent clicked');
-        // You can add your memory agent logic here
+        await browser.storage.local.set({ activeSidePanelTab: "ask" });
+        browser.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
       },
     },
     {
@@ -198,9 +239,7 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
       onClick: (e?: Event) => {
         e?.preventDefault();
         e?.stopPropagation();
-        setIsBrowserAgentOpen((prev) => !prev);
-        // console.log('Memory Agent clicked');
-        // You can add your memory agent logic here
+        browser.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
       },
     },
   ];
@@ -215,15 +254,6 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
           borderColor: "lightgray",
           textColor: "black",
         }}
-      />{" "}
-      <Sidebar
-        isOpen={isBrowserAgentOpen}
-        messages={messages}
-        activeLink={activeLink as PublicRandomLink}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        setMessages={setMessages}
-        onClose={() => setIsBrowserAgentOpen(false)}
       />
     </>
   );

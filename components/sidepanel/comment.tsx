@@ -1,49 +1,86 @@
-import { cn, timeAgo } from "@/lib/utils";
-import { Dot, Heart, MessageCircle, SmilePlus } from "lucide-react";
+import { cn, timeAgo, TUser } from "@/lib/utils";
+import {
+  Dot,
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  Share2,
+  SmilePlus,
+  Trash2,
+} from "lucide-react";
 import React from "react";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Comment } from "./ThreadsTab";
-import { Skeleton } from "../ui/skeleton";
+import { useQueryClient } from "@tanstack/react-query";
+import { useDeleteComment } from "@/hooks/useLikeComment";
 
 type TCommentProps = {
   comment: Comment;
   toReply: Comment | null;
-  onReplyClick?: (comment: Comment) => void;
+  activeLinkId: string;
+  onReplyClick?: (comment: Comment | null) => void;
+  sortOption: string;
 };
 
 const CommentCard = ({
   comment,
   onReplyClick,
   toReply,
+  activeLinkId,
+  sortOption,
   isReply = false,
 }: TCommentProps & { isReply?: boolean }) => {
   const [showReplies, setShowReplies] = React.useState(false);
-  const { liked, likeCount, toggleLike, isLoading } = useLikeComment(
-    comment.id
+  const [show, setShow] = React.useState(false);
+  const { toggleLike, isPending } = useLikeComment(
+    comment?.id,
+    activeLinkId,
+    sortOption
   );
+  const { mutate: deleteComment } = useDeleteComment(activeLinkId, sortOption);
   const icons = [
     {
       title: "like",
       icon: Heart,
-      fill: liked ? "red" : "none",
-      likeCount: likeCount,
-      isFetching: isLoading,
+      fill: comment?.liked ? "red" : "none",
+      likeCount: Number(comment?.likeCount), // isFetching: isLoading,
       onClick: () => {
-        toggleLike();
+        if (isPending) return;
+        toggleLike(comment?.liked);
       },
     },
     {
       title: "comment",
       icon: MessageCircle,
 
-      onClick: () => onReplyClick?.(comment),
+      onClick: () => onReplyClick?.(toReply ? null : comment),
     },
     { title: "react", icon: SmilePlus, onClick: () => {} },
+  ];
+  const queryClient = useQueryClient();
+  const userData = queryClient.getQueryData<TUser>(["get-user"]);
+  const isUsersComment = comment?.userId === userData?.id;
+  const commentOptions = [
+    { icon: Share2, name: "Share", onClick: () => {} },
+    ...(isUsersComment
+      ? [
+          {
+            icon: Trash2,
+            name: "Delete",
+            onClick: () => {
+              deleteComment(comment.id);
+              setShow(false);
+            },
+          },
+        ]
+      : []),
   ];
 
   return (
     <div
       className={cn(
-        "flex items-start justify-center w-full px-6 py-4",
+        "flex items-start justify-center w-full px-6 py-4 font-inter",
         isReply
           ? "border border-neutral-200 rounded-xl mt-2 "
           : "border-b border-neutral-200",
@@ -57,10 +94,10 @@ const CommentCard = ({
         />
       )}
       <div className={cn("flex-1 flex flex-col w-full", !isReply && " ml-3")}>
-        <div className="flex mb-2 items-center justify-center w-full">
+        <div className="flex mb-2 items-center justify-between w-full">
           <div className=" text-base leading-tight flex flex-col flex-1">
             <div className="flex items-center justify-start">
-              <h2 className="font-medium tracking-tight text-sm leading-none">
+              <h2 className="font-medium text-neutral-700 tracking-tight text-sm leading-none">
                 {comment?.user?.name}
               </h2>
               <Dot className="size-3" />
@@ -69,8 +106,33 @@ const CommentCard = ({
               </span>
             </div>
           </div>
+          <div>
+            <Popover open={show} onOpenChange={setShow}>
+              <PopoverTrigger asChild>
+                <Button size={"icon"} className="" variant="ghost">
+                  <MoreHorizontal className="size-4 stroke-neutral-800" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[120px] rounded-xl p-0 bg-white border-neutral-200 border -translate-x-4">
+                {/**/}
+                {commentOptions.map((option) => {
+                  return (
+                    <div
+                      onClick={option.onClick}
+                      className="w-full group border-t first:border-none  cursor-pointer border-neutral-200 flex items-center justify-start px-3 py-1 first:mt-2 last:mb-2"
+                    >
+                      <option.icon className="size-4 " />
+                      <span className="text-sm group-hover:text-neutral-900  font-inter ml-2 font-medium text-neutral-700 ">
+                        {option.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
-        <p className="text-sm  font-medium opacity-90">
+        <p className="text-sm text-neutral-800 font-medium opacity-90">
           {comment.content?.split("\n").map((line, i) => (
             <span key={i}>
               {line}
@@ -104,8 +166,8 @@ const CommentCard = ({
         )}
         <div className="w-full mt-4 flex items-center justify-between">
           <div className=" flex items-center justify-start space-x-3">
-            {icons.map(
-              ({ title, icon, onClick, fill, likeCount, isFetching }, i) => (
+            {!isReply &&
+              icons.map(({ title, icon, onClick, fill, likeCount }, i) => (
                 <button
                   onClick={onClick}
                   key={title}
@@ -113,20 +175,18 @@ const CommentCard = ({
                 >
                   {React.createElement(icon, {
                     fill: fill || "none",
-                    className: "size-4 opacity-70",
+                    className: "size-4 stroke-neutral-900 opacity-70",
                   })}
 
-                  {i === 0 &&
-                    (isFetching ? (
-                      <Skeleton className="h-4 w-3 bg-neutral-300 rounded-lg" />
-                    ) : (
-                      <span className="text-neutral-600 text-sm">
-                        {Number(likeCount)}
-                      </span>
-                    ))}
+                  {i === 0 && (
+                    <span className="text-neutral-600 text-sm">
+                      {typeof likeCount === "number" && !isNaN(likeCount)
+                        ? likeCount
+                        : 0}
+                    </span>
+                  )}
                 </button>
-              )
-            )}
+              ))}
           </div>
           {comment.replies!?.length > 0 && (
             <div
@@ -142,9 +202,11 @@ const CommentCard = ({
           <div className="mt-2 space-y-2">
             {comment.replies!?.map((reply) => (
               <CommentCard
+                sortOption={sortOption}
                 toReply={toReply}
                 key={reply.id}
                 comment={reply}
+                activeLinkId={activeLinkId}
                 isReply={true}
               />
             ))}

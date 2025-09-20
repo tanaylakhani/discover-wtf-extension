@@ -66,6 +66,14 @@
     --ring: 240 4.9% 83.9%;
   }
 }
+@layer utilities {
+  .font-instrument {
+    font-family: "Instrument Serif", serif;
+  }
+  .font-inter {
+    font-family: "Inter", sans-serif;
+  }
+}
 
 * {
   border-color: hsl(var(--border));
@@ -74,10 +82,5 @@
 #root {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: "Inter", sans-serif;
-}
-
-/* Inter font class */
-.inter-sans {
-  font-family: "Inter", sans-serif;
+  @apply text-base font-inter;
 }

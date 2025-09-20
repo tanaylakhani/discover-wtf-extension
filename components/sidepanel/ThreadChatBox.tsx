@@ -67,7 +67,7 @@ export default function ThreadChatBox({
                 onClick={() => handleRemoveFile(i)}
                 className="ml-2 size-6 cursor-pointer "
               >
-                <X className="size-4" />
+                <X className="size-4 " />
               </Button>
             </div>
           ))}
@@ -95,7 +95,7 @@ export default function ThreadChatBox({
             disabled={files.length === 1}
             id="file-upload"
           />
-          <Plus />
+          <Plus className="" />
         </label>
 
         <TextArea
@@ -106,7 +106,7 @@ export default function ThreadChatBox({
             }
           }}
           placeholder="Leave a Message..."
-          className="appearance-none self-center focus-visible:outline-none resize-none w-full px-2 py-2  text-base"
+          className="appearance-none bg-transparent self-center focus-visible:outline-none resize-none w-full px-2 py-2  text-base"
           value={input}
           minRows={1}
           maxRows={1}

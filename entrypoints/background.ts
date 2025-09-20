@@ -10,7 +10,7 @@ import {
   makeCall,
   updateCount,
 } from "../lib/utils";
-import { PageData } from "@/components/Sidebar";
+import { PageData } from "@/components/Toolbar";
 
 // Global variables to store the extension tab ID and window ID
 let extensionTabId: number | null = null;
@@ -236,8 +236,8 @@ async function handleMessage(
       handleLikeLink(message, sendResponse);
       break;
     case "GET_HISTORY":
-      const response = await makeCall("/track-visit", {}, 10000);
-      console.log({ history: response?.data });
+      const response = await makeCall("/track-visit", {}, 15000);
+      console.table({ history: response?.data });
       sendResponse({ data: response?.data || [] });
       break;
     case "ADD_TO_HISTORY":
@@ -257,8 +257,11 @@ async function handleMessage(
       break;
     case "GET_COMMENTS":
       try {
-        const { linkId } = message;
-        const stringifiedParams = new URLSearchParams({ linkId }).toString();
+        const { linkId, sort } = message;
+        const stringifiedParams = new URLSearchParams({
+          linkId,
+          sort,
+        }).toString();
         const response = await makeCall(`/comment?${stringifiedParams}`);
         sendResponse({ comments: response?.comments || [] });
       } catch (error) {
@@ -404,26 +407,34 @@ async function handleMessage(
     case "LIKE_COMMENT": {
       try {
         const { commentId, liked } = message;
-        if (!commentId) {
+        console.log("Inside LIKE_COMMENT" + commentId, { commentId, liked });
+        if (!commentId || typeof liked !== "boolean") {
           sendResponse({
             success: false,
-            error: "Missing commentId",
+            error: "Missing commentId or liked",
           });
+          break;
         }
 
-        // Toggle like
+        // Use the correct API route and headers (no userId needed)
         const postUrl = `/comment/like?commentId=${encodeURIComponent(
           commentId
         )}`;
         const postData = await makeCall(postUrl, {
           method: "POST",
-          body: JSON.stringify({ liked: !liked }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ liked }),
         });
         sendResponse({
           success: postData?.success,
           error: postData?.error || null,
+          liked: postData?.data?.liked ?? liked,
+          likeCount: postData?.data?.count ?? 0,
         });
       } catch (error) {
+        console.log("LIKE_COMMENT Error: ", error);
         sendResponse({
           success: false,
           error: error instanceof Error ? error.message : String(error),

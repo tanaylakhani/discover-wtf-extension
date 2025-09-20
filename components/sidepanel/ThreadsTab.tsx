@@ -1,23 +1,18 @@
 "use client";
-import {
-  fileToBuffer,
-  makeCall,
-  makeCommentsCall,
-  PublicRandomLink,
-} from "@/lib/utils";
+import { User } from "@/lib/graphql/user";
+import { cn, fileToBuffer, PublicRandomLink } from "@/lib/utils";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ListFilter } from "lucide-react";
 import React from "react";
 import useMeasure from "react-use-measure";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ScrollArea } from "../ui/scroll-area";
 import { Skeleton } from "../ui/skeleton";
-import ThreadChatBox from "./ThreadChatBox";
-import { User } from "@/lib/graphql/user";
 import CommentCard from "./comment";
-import { Button } from "../ui/button";
-import { ListFilter } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-
+import ThreadChatBox from "./ThreadChatBox";
+import { v4 as uuid } from "uuid";
 export type TCommentAuthor = {
   id: string;
   name: string | null | undefined;
@@ -37,6 +32,9 @@ export type Comment = {
   media: { id: string; url: string; type: string; createdAt: Date }[] | null;
   parentId?: string | null; // 👈 parent reference
   replies?: Comment[];
+  replyCount: number;
+  likeCount: number;
+  liked: boolean;
 };
 
 type ThreadsTabProps = {
@@ -68,11 +66,12 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
     isLoading: isFetchingComments,
     refetch,
   } = useQuery({
-    queryKey: ["get-comments", activeLink?.id],
+    queryKey: ["get-comments", activeLink?.id, sortOption],
     queryFn: async () => {
       const response = await browser.runtime.sendMessage({
         type: "GET_COMMENTS",
         linkId: activeLink?.id as string,
+        sort: sortOption,
       });
       console.log("fetching comments", response);
       const flatComments = (response?.comments || []) as Comment[];
@@ -120,16 +119,17 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
       setFiles([]);
 
       await queryClient.cancelQueries({
-        queryKey: ["get-comments", activeLink?.id as string],
+        queryKey: ["get-comments", activeLink?.id as string, sortOption],
       });
 
       const previousComments = queryClient.getQueryData<Comment[]>([
         "get-comments",
         activeLink?.id,
+        sortOption,
       ]);
 
       const optimisticComment: Comment = {
-        id: `temp-${Date.now()}`,
+        id: uuid(),
         linkId: activeLink?.id || "",
         userId: user?.id,
         content: message,
@@ -139,7 +139,7 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
         media: files.length
           ? [
               {
-                id: `temp-${Date.now()}-${files[0].name}`,
+                id: uuid(),
                 url: URL.createObjectURL(files[0]),
                 type: files[0].type.startsWith("image/") ? "image" : "video",
                 createdAt: new Date(),
@@ -148,10 +148,13 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
           : null,
         parentId: parentId || null,
         replies: [],
+        replyCount: 0,
+        liked: false,
+        likeCount: 0,
       };
 
       queryClient.setQueryData<Comment[]>(
-        ["get-comments", activeLink?.id],
+        ["get-comments", activeLink?.id, sortOption],
         (old) => {
           if (!old) return [optimisticComment];
 
@@ -183,11 +186,11 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
     },
 
     onSuccess: (newComment, _, context) => {
-      if (toReply && newComment.parentId !== toReply.id) {
-        setToReply(null);
-      }
+      // if (toReply && newComment.parentId !== toReply.id) {
+      setToReply(null);
+      // }
       queryClient.setQueryData<Comment[]>(
-        ["get-comments", activeLink?.id],
+        ["get-comments", activeLink?.id, sortOption],
         (old) => {
           if (!old || !context?.optimisticComment) return old;
 
@@ -208,7 +211,7 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
     onError: (error, _, context) => {
       if (context?.previousComments) {
         queryClient.setQueryData(
-          ["get-comments", activeLink?.id],
+          ["get-comments", activeLink?.id, sortOption],
           context.previousComments
         );
       }
@@ -221,7 +224,7 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
 
     onSettled: () => {
       queryClient.invalidateQueries({
-        queryKey: ["get-comments", activeLink?.id],
+        queryKey: ["get-comments", activeLink?.id, sortOption],
       });
     },
   });
@@ -242,59 +245,34 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
     }
   }, [data?.length]);
 
-  // Prefetch like status/count for all comments and replies
-  React.useEffect(() => {
-    if (!data) return;
-    // Helper to recursively collect all comment IDs
-    const collectIds = (comments: Comment[]): string[] => {
-      let ids: string[] = [];
-      for (const c of comments) {
-        ids.push(c.id);
-        if (c.replies && c.replies.length > 0) {
-          ids = ids.concat(collectIds(c.replies));
-        }
-      }
-      return ids;
-    };
-    const allIds = collectIds(data);
-    allIds.forEach((commentId) => {
-      queryClient.prefetchQuery({
-        queryKey: ["comment-like-status", commentId],
-        queryFn: async () => {
-          const response = await browser.runtime.sendMessage({
-            type: "GET_COMMENT_LIKE_STATUS",
-            commentId,
-          });
-          return response;
-        },
-      });
-    });
-  }, [data, queryClient]);
-
   return (
     <div className="">
       <div
         ref={commentOptionsBar}
-        className="px-4 py-2 flex items-center justify-between border-b border-neutral-200"
+        className="px-4 py-2 flex items-center text-neutral-800 justify-between border-b border-neutral-200"
       >
         <div>Comments ({data?.length || 0})</div>
         <Popover>
           <PopoverTrigger asChild>
             <Button size={"icon"} variant={"outline"}>
-              <ListFilter />
+              <ListFilter className="stroke-neutral-900" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent>
+          <PopoverContent className="bg-white font-inter text-sm font-medium -translate-x-3 p-0 rounded-xl w-[180px]">
             {SORT_OPTIONS.map((option) => {
               return (
-                <Button
+                <div
                   key={option.value}
-                  variant="ghost"
-                  className="w-full justify-start"
+                  className={cn(
+                    " border-t first:border-none px-3 first:mt-2 last:mb-2 py-1 border-neutral-200 cursor-pointer w-full justify-start",
+                    sortOption === option.value
+                      ? "text-neutral-900"
+                      : "text-neutral-700"
+                  )}
                   onClick={() => setSortOption(option.value)}
                 >
                   {option.label}
-                </Button>
+                </div>
               );
             })}
           </PopoverContent>
@@ -313,9 +291,11 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
             <div ref={viewportRef} className="mb-10">
               {data!.map((comment, index) => (
                 <CommentCard
+                  sortOption={sortOption}
                   toReply={toReply}
                   onReplyClick={setToReply}
                   comment={comment}
+                  activeLinkId={activeLink?.id as string}
                   key={index}
                 />
               ))}
