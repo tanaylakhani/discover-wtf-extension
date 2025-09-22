@@ -1,164 +1,98 @@
 "use client";
 
+import URL from "@/lib/url";
 import { cn, getGqlToken, PublicRandomLink, TUser } from "@/lib/utils";
-import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
-import hardenReactMarkdown from "harden-react-markdown";
+import { useChat } from "@ai-sdk/react";
+import { useQuery } from "@tanstack/react-query";
+import { DefaultChatTransport, UIMessage } from "ai";
+import { Dot, History, Lightbulb, Loader, Plus } from "lucide-react";
 import { useRef } from "react";
-import ReactMarkdown from "react-markdown";
 import useMeasure from "react-use-measure";
-import remarkGfm from "remark-gfm";
-import { CodeBlock, CodeBlockCopyButton } from "../ai-elements/code-block";
+import { v4 as uuid } from "uuid";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "../ai-elements/conversation";
+import { Message, MessageContent } from "../ai-elements/message";
 import {
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
 } from "../ai-elements/prompt-input";
-import { ScrollArea } from "../ui/scroll-area";
-import { Skeleton } from "../ui/skeleton";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import { Message, MessageContent } from "../ai-elements/message";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-} from "../ai-elements/conversation";
 import { Response } from "../ai-elements/response";
-import URL from "@/lib/url";
 import { Button } from "../ui/button";
-import { History, Lightbulb, Plus } from "lucide-react";
-import { v4 as uuid } from "uuid";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Skeleton } from "../ui/skeleton";
+
 type AskTabProps = {
   activeTab: string;
   activeLink: PublicRandomLink | null;
-  user?: TUser;
+  user: TUser;
   height: number;
   pageData: PageData;
   suggestedPrompts: string[];
   isSuggestedPromptsLoading?: boolean;
 };
 
-const components = {
-  ol: ({ node, children, className, ...props }: any) => (
-    <ol className={cn("ml-4 list-outside list-decimal", className)} {...props}>
-      {children}
-    </ol>
-  ),
-  li: ({ node, children, className, ...props }: any) => (
-    <li className={cn("py-1", className)} {...props}>
-      {children}
-    </li>
-  ),
-  ul: ({ node, children, className, ...props }: any) => (
-    <ul className={cn("ml-4 list-outside list-decimal", className)} {...props}>
-      {children}
-    </ul>
-  ),
-  strong: ({ node, children, className, ...props }: any) => (
-    <span className={cn("font-medium font-inter", className)} {...props}>
-      {children}
-    </span>
-  ),
-  a: ({ node, children, className, ...props }: any) => (
-    <a
-      className={cn("font-medium text-primary underline", className)}
-      rel="noreferrer"
-      target="_blank"
-      {...props}
-    >
-      {children}
-    </a>
-  ),
-  h1: ({ node, children, className, ...props }: any) => (
-    <h1
-      className={cn("mt-6 mb-2 font-medium tracking-tight text-3xl", className)}
-      {...props}
-    >
-      {children}
-    </h1>
-  ),
-  h2: ({ node, children, className, ...props }: any) => (
-    <h2
-      className={cn("mt-6 mb-2 font-medium tracking-tight text-2xl", className)}
-      {...props}
-    >
-      {children}
-    </h2>
-  ),
-  h3: ({ node, children, className, ...props }: any) => (
-    <h3
-      className={cn("mt-6 mb-2 font-medium tracking-tight text-xl", className)}
-      {...props}
-    >
-      {children}
-    </h3>
-  ),
-  h4: ({ node, children, className, ...props }: any) => (
-    <h4
-      className={cn("mt-6 mb-2 font-medium tracking-tight text-lg", className)}
-      {...props}
-    >
-      {children}
-    </h4>
-  ),
-  h5: ({ node, children, className, ...props }: any) => (
-    <h5 className={cn("mt-6 mb-2 font-medium text-base", className)} {...props}>
-      {children}
-    </h5>
-  ),
-  h6: ({ node, children, className, ...props }: any) => (
-    <h6 className={cn("mt-6 mb-2 font-semibold text-sm", className)} {...props}>
-      {children}
-    </h6>
-  ),
-  pre: ({ node, className, children }: any) => {
-    let language = "javascript";
-
-    if (typeof node?.properties?.className === "string") {
-      language = node.properties.className.replace("language-", "");
-    }
-
-    const childrenIsCode =
-      typeof children === "object" &&
-      children !== null &&
-      "type" in children &&
-      children.type === "code";
-
-    if (!childrenIsCode) {
-      return <pre>{children}</pre>;
-    }
-
-    return (
-      <CodeBlock
-        className={cn("my-4 h-auto", className)}
-        code={(children.props as { children: string }).children}
-        language={language}
-      >
-        <CodeBlockCopyButton
-          onCopy={() => console.log("Copied code to clipboard")}
-          onError={() => console.error("Failed to copy code to clipboard")}
-        />
-      </CodeBlock>
-    );
-  },
+type TChat = {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  userId: string;
+  linkId: string;
+  title: string | null;
 };
+
+type TMessage = {
+  id: string;
+  content: unknown;
+  createdAt: Date;
+  chatId: string;
+  role: string;
+};
+
 const AskTab = ({
   height,
   suggestedPrompts,
   isSuggestedPromptsLoading,
   pageData,
+  user,
+  activeLink,
 }: AskTabProps) => {
   const [ref, bounds] = useMeasure();
   const [input, setInput] = useState("");
+  const [openHistory, setOpenHistory] = useState(false);
   const [chatId, setChatId] = useState(uuid());
+  const [isPrevChat, setIsPrevChat] = useState(false);
+  // const [historyMessages, setHistoryMessages] = useState<TMessage[] | null>(
+  //   null
+  // );
+
+  // const formattedHistoryMessages = useMemo(
+  //   () =>
+  //     historyMessages?.map(
+  //       (message) =>
+  //         ({
+  //           id: message.id,
+  //           parts: message?.content,
+  //           role: message?.role,
+  //           metadata: {
+  //             createdAt: message?.createdAt,
+  //           },
+  //         } as UIMessage)
+  //     ),
+  //   [historyMessages]
+  // );
+  // console.log({ formattedHistoryMessages });
   const [commentOptionsBar, barBounds] = useMeasure();
   const scrollAreaHeight = `calc(100vh - ${
     height + bounds?.height + barBounds?.height
   }px)`;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, setMessages } = useChat({
     id: chatId,
     transport: new DefaultChatTransport({
       api: `${URL}/api/chat`,
@@ -167,9 +101,89 @@ const AskTab = ({
         const headers: Record<string, string> = {
           Authorization: `Bearer ${gqlToken}`,
         };
-        return { body: { messages, ctx: pageData?.content }, headers };
+        return {
+          body: {
+            messages,
+            ctx: pageData?.content,
+            chatId: chatId,
+            userId: user?.id,
+            linkId: activeLink?.id,
+          },
+          headers,
+        };
       },
     }),
+  });
+  const handleHistoryClick = (chatId: string) => {
+    setIsPrevChat(true);
+    setChatId(chatId);
+  };
+
+  const { data: history, isLoading: isHistoryLoading } = useQuery({
+    enabled: openHistory,
+    queryKey: ["get-chat-history", activeLink?.id],
+    queryFn: async () => {
+      const gqlToken = await getGqlToken();
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${gqlToken}`,
+      };
+      const params = {
+        linkId: activeLink?.id as string,
+      };
+      const urlSearchParams = new URLSearchParams(params);
+      const response = await fetch(
+        `${URL}/api/chat/history?${urlSearchParams.toString()}`,
+        { headers }
+      );
+
+      if (!response?.ok) {
+        return [];
+      }
+      const data = await response.json();
+
+      return data?.chats as TChat[];
+    },
+  });
+  const { data: prevChatMessages, isLoading: isLoadingPrevChat } = useQuery({
+    enabled: isPrevChat && !!chatId,
+    queryKey: ["get-previous-chat", activeLink?.id, chatId, isPrevChat],
+    queryFn: async () => {
+      const gqlToken = await getGqlToken();
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${gqlToken}`,
+      };
+      const params = {
+        linkId: activeLink?.id as string,
+        chatId,
+      };
+      const urlSearchParams = new URLSearchParams(params);
+      const response = await fetch(
+        `${URL}/api/chat/history?${urlSearchParams.toString()}`,
+        { headers }
+      );
+
+      if (!response?.ok) {
+        return [];
+      }
+      const data = await response.json();
+
+      const chat = data?.chat as TChat;
+      const chatMessages = data?.messages as TMessage[];
+      console.log({ chatMessages });
+      const formattedHistoryMessages = chatMessages?.map(
+        (message) =>
+          ({
+            id: message.id,
+            parts: message?.content,
+            role: message?.role,
+            metadata: {
+              createdAt: message?.createdAt,
+            },
+          } as UIMessage)
+      );
+      setMessages(formattedHistoryMessages);
+      return chat;
+    },
   });
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -178,6 +192,12 @@ const AskTab = ({
   };
 
   const startNewChat = () => {
+    if (isPrevChat) {
+      setIsPrevChat(false);
+    }
+    if (isLoadingPrevChat) {
+      return;
+    }
     const newChatId = uuid();
     setChatId(newChatId);
   };
@@ -209,18 +229,52 @@ const AskTab = ({
           >
             <Plus className="size-4" />
           </Button>
-          <Button
-            className="hover:bg-neutral-100"
-            size={"icon"}
-            variant="ghost"
-          >
-            <History className="size-4" />
-          </Button>
+          <Popover open={openHistory} onOpenChange={setOpenHistory}>
+            <PopoverTrigger asChild>
+              <Button
+                className="hover:bg-neutral-100"
+                size={"icon"}
+                variant="ghost"
+              >
+                <History className="size-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="overflow-hidden bg-white translate-x-5 rounded-xl font-inter translate-y-2 p-0 ">
+              {history?.length === 0 ? (
+                <div>No previous chats</div>
+              ) : (
+                history?.map((chat, i) => {
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => handleHistoryClick(chat.id)}
+                      className={cn(
+                        "px-3 py-1.5 border-b last:border-none cursor-pointer hover:bg-neutral-50 flex items-center justify-between",
+                        chat?.id === chatId &&
+                          "bg-orange-50 hover:bg-orange-100/70"
+                      )}
+                    >
+                      <span className="text-sm text-neutral-700 tracking-tight ">
+                        {chat?.title}
+                      </span>
+                      {/* {chat?.id === chatId && (
+                        <Dot className="size-6 leading-none inline" />
+                      )} */}
+                    </div>
+                  );
+                })
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
       <Conversation>
         <ConversationContent style={{ height: scrollAreaHeight }}>
-          {messages.length === 0 ? (
+          {isPrevChat && isLoadingPrevChat ? (
+            <div className="flex justify-center items-center w-full">
+              <Loader className="animate-spin size-6 mt-6" />
+            </div>
+          ) : messages.length === 0 ? (
             <div className="mx-auto  font-inter px-4 flex w-full flex-col items-center justify-end mb-6 pt-10">
               <div className="flex items-center justify-start w-full">
                 <div className="flex-1 flex flex-col ml-4">
@@ -258,7 +312,7 @@ const AskTab = ({
             </div>
           ) : (
             <div className="flex flex-col space-y-4 py-4 max-w-full">
-              {messages.map((message) => (
+              {messages?.map((message) => (
                 <Message className="" from={message?.role} key={message.id}>
                   <MessageContent
                     className={cn(

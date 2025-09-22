@@ -4,6 +4,7 @@ import { UIMessage } from "ai";
 import {
   animateGlobeIcon,
   fetchInitialLinks,
+  getGqlToken,
   getRandomUrl,
   hasDiscoverHistoryParam,
   isValidUrl,
@@ -354,11 +355,14 @@ async function handleMessage(
       #${pageData?.title}
       ${pageData?.content}
       `;
-
+      const { gqlToken } = await getGqlToken();
       try {
         const res = await fetch(`${URL}/api/chat/suggested`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${gqlToken}`,
+          },
           body: JSON.stringify({
             markdown: markdown,
           }),
