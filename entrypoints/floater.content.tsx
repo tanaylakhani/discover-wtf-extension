@@ -14,9 +14,6 @@ export default defineContentScript({
   runAt: "document_idle", // Changed from document_start to document_idle
 
   async main(ctx) {
-    console.log("Hello from floater content script!");
-
-    // Wait for body to be available
     const waitForBody = () => {
       return new Promise<void>((resolve) => {
         if (document.body) {
@@ -57,8 +54,6 @@ export default defineContentScript({
       const shouldMount = token?.gqlToken && res?.tabId === extensionTabId;
 
       if (shouldMount && !uiInstance) {
-        console.log("Mounting floater UI...");
-
         uiInstance = await createShadowRootUi(ctx, {
           name: "discover-extension-floater",
           position: "inline",
@@ -86,7 +81,6 @@ export default defineContentScript({
             return { root, wrapper };
           },
           onRemove: (elements) => {
-            console.log("Unmounting floater UI...");
             elements?.root.unmount();
             elements?.wrapper.remove();
           },
@@ -94,7 +88,6 @@ export default defineContentScript({
 
         uiInstance.mount();
       } else if (!shouldMount && uiInstance) {
-        console.log("Conditions unmet — unmounting floater UI...");
         await uiInstance.remove();
         uiInstance = null;
       }

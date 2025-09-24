@@ -73,7 +73,6 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
         linkId: activeLink?.id as string,
         sort: sortOption,
       });
-      console.log("fetching comments", response);
       const flatComments = (response?.comments || []) as Comment[];
       return flatComments; // 👈 return nested tree
     },
@@ -219,7 +218,6 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
         setInput(context.message);
         setFiles(context.files);
       }
-      console.error("Failed to post comment:", error);
     },
 
     onSettled: () => {
@@ -278,32 +276,34 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
           </PopoverContent>
         </Popover>
       </div>
-      {isFetchingComments ? (
-        <LoadingSkeleton />
-      ) : data!.length === 0 ? (
-        <EmptyComments height={scrollAreaHeight} />
-      ) : (
-        <ScrollArea
-          style={{ height: scrollAreaHeight }}
-          className=" overflow-y-auto "
-        >
-          <ScrollAreaPrimitive.Viewport>
-            <div ref={viewportRef} className="mb-10">
-              {data!.map((comment, index) => (
+
+      <ScrollArea
+        style={{ height: scrollAreaHeight }}
+        className=" overflow-y-auto "
+      >
+        <ScrollAreaPrimitive.Viewport>
+          <div ref={viewportRef} className="mb-10">
+            {isFetchingComments ? (
+              <LoadingSkeleton />
+            ) : data!.length === 0 ? (
+              <EmptyComments height={scrollAreaHeight} />
+            ) : (
+              data!.map((comment, index) => (
                 <CommentCard
                   sortOption={sortOption}
                   toReply={toReply}
                   onReplyClick={setToReply}
                   comment={comment}
+                  isPending={isPending}
                   activeLinkId={activeLink?.id as string}
-                  key={index}
+                  key={comment.id}
                 />
-              ))}
-            </div>
-          </ScrollAreaPrimitive.Viewport>
-          {/* </ScrollAreaPrimitive.Viewport> */}
-        </ScrollArea>
-      )}
+              ))
+            )}
+          </div>
+        </ScrollAreaPrimitive.Viewport>
+        {/* </ScrollAreaPrimitive.Viewport> */}
+      </ScrollArea>
       <div
         ref={ref}
         className="pb-2 px-2 flex items-center justify-center gap-2"
@@ -328,9 +328,7 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
                 },
                 parentId: toReply?.id || null,
               });
-            } catch (error) {
-              console.error("Failed to submit comment:", error);
-            }
+            } catch (error) {}
           }}
         />
       </div>

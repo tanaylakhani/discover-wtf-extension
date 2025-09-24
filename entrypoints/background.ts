@@ -28,19 +28,14 @@ export default defineBackground(async () => {
   initializeContextMenus();
 
   browser.runtime.onStartup.addListener(async () => {
-    console.log("Starup called 🌱💌🌊");
     const { gqlToken } = await browser.storage.local.get("gqlToken");
     await browser.action.setPopup({
       popup: gqlToken ? "" : browser.runtime.getURL("/authPopup.html"),
     });
-
-    // const resp = await makeCall("/recall");
-    // console.log({ resp });
   });
 
   browser.storage.onChanged.addListener(async (changes, areaName) => {
     if (areaName === "local" && changes.gqlToken) {
-      console.log("🚨 Changes Detected");
       const newToken = changes.gqlToken.newValue;
       await browser.action.setPopup({
         popup: newToken ? "" : browser.runtime.getURL("/authPopup.html"),
@@ -59,7 +54,6 @@ export default defineBackground(async () => {
       await browser.storage.local.remove("extensionTabId");
       extensionTabId = null;
       extensionWindowId = null;
-      console.log("Extension window closed, cleared tracking");
     }
   });
 
@@ -108,7 +102,6 @@ async function initializeContextMenus() {
     }
 
     browser.contextMenus.onClicked.addListener(handleContextMenuClick);
-    console.log("✅ Context menus initialized");
   } catch (error) {
     console.error("❌ Error initializing context menus:", error);
   }
@@ -119,8 +112,6 @@ function handleContextMenuClick(
   info: Browser.contextMenus.OnClickData,
   tab?: Browser.tabs.Tab
 ) {
-  // console.log('🖱️ Context menu clicked:', info.menuItemId);
-
   try {
     switch (info.menuItemId) {
       case "discover_login":
@@ -145,8 +136,6 @@ function handleLoginClick() {
 
 export async function handleLogoutClick() {
   try {
-    // console.log('🔓 Starting logout process...');
-
     const authKeys = [
       "googleToken",
       "gqlToken",
@@ -165,8 +154,6 @@ export async function handleLogoutClick() {
       message: "Successfully logged out of Stacks",
     });
   } catch (error) {
-    console.error("❌ Error during logout:", error);
-
     browser.notifications.create({
       type: "basic",
       iconUrl: browser.runtime.getURL("/icon/48.png"),
@@ -238,7 +225,6 @@ async function handleMessage(
       break;
     case "GET_HISTORY":
       const response = await makeCall("/track-visit", {}, 15000);
-      console.table({ history: response?.data });
       sendResponse({ data: response?.data || [] });
       break;
     case "ADD_TO_HISTORY":
@@ -286,7 +272,6 @@ async function handleMessage(
           user: TCommentAuthor;
           parentId?: string;
         } = message;
-        console.log({ message });
         const formData = new FormData();
         formData.append("content", content);
         formData.append("user", JSON.stringify(user));
@@ -317,9 +302,6 @@ async function handleMessage(
         });
       }
       break;
-    case "chat_request":
-      handleChatRequest(message, sender, sendResponse);
-      break;
 
     case "EXTRACT_CONTENT": {
       const { url } = message;
@@ -337,7 +319,6 @@ async function handleMessage(
           50000
         );
         const markdown = resp?.output;
-        console.log({ resp });
         await browser.storage.local.set({ extractedMarkdown: markdown });
         sendResponse({ success: true });
       } catch (err) {
@@ -368,7 +349,6 @@ async function handleMessage(
           }),
         });
         const data = await res.json();
-        console.log({ data });
         if (!res.ok || !data?.success) {
           throw new Error(`API error: ${data?.error}`);
         }
@@ -411,7 +391,6 @@ async function handleMessage(
     case "LIKE_COMMENT": {
       try {
         const { commentId, liked } = message;
-        console.log("Inside LIKE_COMMENT" + commentId, { commentId, liked });
         if (!commentId || typeof liked !== "boolean") {
           sendResponse({
             success: false,
@@ -438,128 +417,12 @@ async function handleMessage(
           likeCount: postData?.data?.count ?? 0,
         });
       } catch (error) {
-        console.log("LIKE_COMMENT Error: ", error);
         sendResponse({
           success: false,
           error: error instanceof Error ? error.message : String(error),
         });
       }
       break;
-    }
-  }
-}
-
-async function handleChatRequest(
-  message: any,
-  sender: Browser.runtime.MessageSender,
-  sendResponse?: (response?: any) => void
-) {
-  const { messages, pageData }: { messages: UIMessage[]; pageData: PageData } =
-    message.payload;
-
-  const markdown = `
-      #${pageData?.title}
-      ${pageData?.content}
-      `;
-
-  console.log({ markdown, pageData });
-  try {
-    const res = await fetch(`${URL}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: messages,
-        ctx: markdown,
-      }),
-    });
-
-    if (!res.body) throw new Error("No response body from API");
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    // Get the tabId to relay messages to the correct content script
-    const tabId = sender.tab?.id;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // Split lines (SSE style)
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-        const dataStr = line.replace(/^data:\s*/, "");
-
-        if (dataStr === "[DONE]") {
-          // Notify content script that stream is done
-          if (tabId !== undefined) {
-            browser.tabs.sendMessage(tabId, { type: "CHAT_DONE" });
-          }
-          if (sendResponse) sendResponse({ type: "CHAT_DONE" });
-          return;
-        }
-
-        try {
-          const parsed = JSON.parse(dataStr);
-
-          // Forward only assistant text chunks
-          if (parsed.type === "text-delta" && parsed.delta) {
-            console.log({ delta: parsed?.delta });
-            if (tabId !== undefined) {
-              browser.tabs.sendMessage(tabId, {
-                type: "CHAT_CHUNK",
-                data: parsed.delta,
-              });
-            }
-            // Optionally, also call sendResponse for legacy/compat
-            if (sendResponse) {
-              sendResponse({
-                type: "CHAT_CHUNK",
-                data: parsed.delta,
-              });
-            }
-          }
-
-          // Optional: handle errors
-          if (parsed.type === "error") {
-            console.log({ error: parsed?.error });
-            if (tabId !== undefined) {
-              browser.tabs.sendMessage(tabId, {
-                type: "CHAT_ERROR",
-                error: parsed.error,
-              });
-            }
-            if (sendResponse) {
-              sendResponse({
-                type: "CHAT_ERROR",
-                error: parsed.error,
-              });
-            }
-          }
-        } catch (err) {
-          console.error("Failed to parse SSE line:", dataStr, err);
-        }
-      }
-    }
-  } catch (err: any) {
-    const tabId = sender.tab?.id;
-    if (tabId !== undefined) {
-      browser.tabs.sendMessage(tabId, {
-        type: "chat_error",
-        error: err.message,
-      });
-    }
-    if (sendResponse) {
-      sendResponse({
-        type: "chat_error",
-        error: err.message,
-      });
     }
   }
 }
@@ -610,7 +473,6 @@ async function handleTabRemoval(tabId: number, removeInfo: any) {
     // await browser.storage.local.set({ urlVisitCount: 0 });
     extensionTabId = null;
     extensionWindowId = null;
-    console.log("Extension tab closed, cleared tracking");
   }
 }
 
@@ -641,8 +503,6 @@ const handleOpenSidePanel = (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("opensidebar", extensionTabId);
-
     browser.sidePanel.open({
       tabId: sender?.tab?.id as number,
       windowId: sender?.tab?.windowId,
@@ -663,7 +523,6 @@ const handleDisablePopup = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("Disabling popup");
     await browser.action.setPopup({ popup: "" });
     sendResponse({ success: true });
   } catch (error) {
@@ -677,7 +536,6 @@ const handleBookmarkLink = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log({ message });
     const params = {
       linkId: message?.data?.linkId,
     };
@@ -698,7 +556,6 @@ const handleLikeLink = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log({ message });
     const params = {
       linkId: message?.data?.linkId,
     };
@@ -719,7 +576,6 @@ const handleGetLikeStatus = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🔍 Getting like status:", message);
     const linkId = message?.linkId;
 
     try {
@@ -728,18 +584,14 @@ const handleGetLikeStatus = async (
         liked: boolean;
         count: number;
       };
-      console.log("✅ Server like status response:", res);
       sendResponse(res);
     } catch (serverError) {
-      console.log("⚠️ Server request failed, using local data:", serverError);
-      // Fallback to local data if server fails
       sendResponse({
         success: false,
         error: (serverError as Error)?.message,
       });
     }
   } catch (error) {
-    console.error("❌ Error in handleGetLikeStatus:", error);
     sendResponse({
       liked: false,
       count: 0,
@@ -752,7 +604,6 @@ const handleGetBookmarkStatus = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🔍 Getting bookmark status:", message);
     const linkId = message?.linkId;
 
     try {
@@ -760,17 +611,9 @@ const handleGetBookmarkStatus = async (
       const res = (await makeCall(`/bookmark?linkId=${linkId}`, {}, 10000)) as {
         data: { bookmarked: boolean };
       };
-      console.log(
-        "handleGetBookmarkStatus:✅ Server bookmark status response:",
-        res?.data
-      );
+
       sendResponse(res?.data);
     } catch (serverError) {
-      console.log(
-        "handleGetBookmarkStatus:⚠️ Server request failed, using local data:",
-        serverError
-      );
-      // Fallback to local data if server fails
       sendResponse({
         bookmarked: false,
         success: false,
@@ -778,7 +621,6 @@ const handleGetBookmarkStatus = async (
       });
     }
   } catch (error) {
-    console.error("❌ Error in handleGetBookmarkStatus:", error);
     sendResponse({
       success: false,
       bookmarked: false,
@@ -792,7 +634,6 @@ const handleToggleLike = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🔄 Toggling like:", message);
     const linkId = message?.linkId;
     const liked = message?.liked;
 
@@ -812,7 +653,6 @@ const handleToggleLike = async (
       error: null,
     });
   } catch (error) {
-    console.error("❌ Error toggling like:", error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -824,7 +664,6 @@ const handleToggleBookmark = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🔄 Toggling bookmark:", message);
     const linkId = message?.linkId;
     const bookmarked = message?.bookmarked;
 
@@ -844,7 +683,6 @@ const handleToggleBookmark = async (
       error: null,
     });
   } catch (error) {
-    console.error("❌ Error toggling like:", error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -857,7 +695,6 @@ const handleEnablePopup = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🌱 Enabling Auth Popup");
     await browser.action.setPopup({
       popup: browser.runtime.getURL("/authPopup.html"),
     });
@@ -874,7 +711,6 @@ const handleSetGQLToken = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("Setting GQL Token", message.value);
     const storageData = {
       googleToken: message?.value,
       gqlToken: message?.value,
@@ -940,7 +776,6 @@ const handleFetchApiData = async (
       data,
     });
   } catch (error) {
-    console.error("Error fetching API data:", error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",
@@ -954,7 +789,6 @@ const handleMarkLinkAsVisited = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🌱 Marking link as visited:", message);
     const linkId = message?.data?.linkId;
 
     // Also make API call in background (don't wait for it)
@@ -970,7 +804,6 @@ const handleMarkLinkAsVisited = async (
       error: null,
     });
   } catch (error) {
-    console.error("❌ Error marking link as visited:", error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

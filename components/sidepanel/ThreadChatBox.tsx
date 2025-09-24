@@ -120,7 +120,7 @@ export default function ThreadChatBox({
           className="size-12 bg-neutral-100 p-1  border-neutral-300 rounded-full flex items-center justify-center"
         >
           <div className="bg-white w-full border border-neutral-300 h-full rounded-full flex items-center justify-center">
-            {isLoading ? <Square /> : <ArrowUp />}
+            <ArrowUp />
           </div>
         </Button>
       </form>

@@ -4,6 +4,7 @@ import {
   Heart,
   MessageCircle,
   MoreHorizontal,
+  Reply,
   Share2,
   SmilePlus,
   Trash2,
@@ -21,6 +22,7 @@ type TCommentProps = {
   activeLinkId: string;
   onReplyClick?: (comment: Comment | null) => void;
   sortOption: string;
+  isPending: boolean;
 };
 
 const CommentCard = ({
@@ -29,6 +31,7 @@ const CommentCard = ({
   toReply,
   activeLinkId,
   sortOption,
+  isPending: isAddingComment,
   isReply = false,
 }: TCommentProps & { isReply?: boolean }) => {
   const [showReplies, setShowReplies] = React.useState(false);
@@ -54,7 +57,7 @@ const CommentCard = ({
       title: "comment",
       icon: MessageCircle,
 
-      onClick: () => onReplyClick?.(toReply ? null : comment),
+      onClick: () => {},
     },
     { title: "react", icon: SmilePlus, onClick: () => {} },
   ];
@@ -62,6 +65,13 @@ const CommentCard = ({
   const userData = queryClient.getQueryData<TUser>(["get-user"]);
   const isUsersComment = comment?.userId === userData?.id;
   const commentOptions = [
+    {
+      icon: Reply,
+      name: "Reply",
+      onClick: () => {
+        onReplyClick?.(toReply ? null : comment);
+      },
+    },
     { icon: Share2, name: "Share", onClick: () => {} },
     ...(isUsersComment
       ? [
@@ -82,14 +92,14 @@ const CommentCard = ({
       className={cn(
         "flex items-start justify-center w-full px-6 py-4 font-inter",
         isReply
-          ? "border border-neutral-200 rounded-xl mt-2 "
+          ? "border border-neutral-200 rounded-xl mt-2 px-4 py-2 "
           : "border-b border-neutral-200",
         toReply?.id === comment.id && "bg-orange-50"
       )}
     >
       {!isReply && (
         <img
-          className="size-8 rounded-full object-cover"
+          className="size-8 mt-1 rounded-full object-cover"
           src={comment?.user?.avatar as string}
         />
       )}
@@ -108,8 +118,12 @@ const CommentCard = ({
           </div>
           <div>
             <Popover open={show} onOpenChange={setShow}>
-              <PopoverTrigger asChild>
-                <Button size={"icon"} className="" variant="ghost">
+              <PopoverTrigger disabled={isAddingComment} asChild>
+                <Button
+                  size={"icon"}
+                  className="hover:bg-neutral-50 rounded-full transition-all"
+                  variant="ghost"
+                >
                   <MoreHorizontal className="size-4 stroke-neutral-800" />
                 </Button>
               </PopoverTrigger>
@@ -134,10 +148,10 @@ const CommentCard = ({
         </div>
         <p className="text-sm text-neutral-800 font-medium opacity-90">
           {comment.content?.split("\n").map((line, i) => (
-            <span key={i}>
-              {line}
-              <br />
-            </span>
+            <>
+              <div key={i}>{line}</div>
+              <br className="my-1" />
+            </>
           ))}
         </p>
         {comment?.media && (
@@ -165,7 +179,7 @@ const CommentCard = ({
           </div>
         )}
         <div className="w-full mt-4 flex items-center justify-between">
-          <div className=" flex items-center justify-start space-x-3">
+          <div className=" flex items-center justify-start space-x-4">
             {!isReply &&
               icons.map(({ title, icon, onClick, fill, likeCount }, i) => (
                 <button
@@ -207,6 +221,7 @@ const CommentCard = ({
                 key={reply.id}
                 comment={reply}
                 activeLinkId={activeLinkId}
+                isPending={isAddingComment}
                 isReply={true}
               />
             ))}

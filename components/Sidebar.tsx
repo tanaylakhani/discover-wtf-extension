@@ -71,14 +71,11 @@ const Sidebar = ({
   const { data, isLoading } = useQuery({
     queryKey: ["get-user"],
     queryFn: async () => {
-      // Ask background script to fetch user data
       const resp = await browser.runtime.sendMessage({ type: "GET_USER" });
-      console.log({ userData: resp });
       return resp?.data as TUser;
     },
   });
   const suggestedPrompts = suggestedPromptsData || [];
-  console.table(pageData);
 
   const tabs = {
     history: (
@@ -114,7 +111,6 @@ const Sidebar = ({
   useEffect(() => {
     const getInitialActiveSidePanelTabState = async () => {
       browser.storage.local.get("activeSidePanelTab").then((res) => {
-        console.log({ activeSidePanelTab: res.activeSidePanelTab });
         setActiveTab(res.activeSidePanelTab ?? "history");
       });
     };
@@ -125,7 +121,6 @@ const Sidebar = ({
       area: string
     ) => {
       if (area === "local" && changes.activeSidePanelTab) {
-        console.log({ changes: changes?.activeSidePanelTab });
         setActiveTab(changes.activeSidePanelTab.newValue ?? "history");
       }
     };

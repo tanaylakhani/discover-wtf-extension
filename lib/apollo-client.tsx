@@ -19,7 +19,7 @@ const httpLink = createHttpLink({
     Accept: "application/json",
     "Content-Type": "application/json",
   },
-});  
+});
 
 // Enhanced error handling for browser extensions
 const errorLink = onError(
@@ -92,22 +92,14 @@ const authLink = setContext(async (_, { headers }) => {
   try {
     const token = await getGqlToken();
 
-    console.log("Apollo Client: Setting auth context", {
-      hasToken: !!token?.gqlToken,
-      tokenLength: token?.gqlToken?.length,
-    });
-
     return {
       headers: {
         ...headers,
-        // Use standard Authorization header format
         ...(token ? { Authorization: `Bearer ${token?.gqlToken}` } : {}),
-        // Also keep X-Authorization for backward compatibility
         "X-Authorization": token?.gqlToken || "",
       },
     };
   } catch (error) {
-    console.error("Apollo Client: Failed to get auth token:", error);
     return {
       headers: {
         ...headers,
@@ -117,10 +109,8 @@ const authLink = setContext(async (_, { headers }) => {
   }
 });
 
-// Enhanced cache configuration for browser extensions
 const cache = new InMemoryCache({
-  // Optimize for browser extension memory constraints
-  resultCaching: false, // Disable result caching to save memory
+  resultCaching: false, 
   typePolicies: {
     Query: {
       fields: {

@@ -149,16 +149,10 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
       }
       const extractedPageData = { url, title, content, metaDescription };
 
-      console.log(`📄 Extracted page data:`, {
-        ...extractPageData,
-        contentPreview: content.substring(0, 200) + "...",
-      });
       browser.storage.local.set({
         pageData: extractedPageData,
       });
-    } catch (err) {
-      console.error("Error extracting page data:", err);
-    }
+    } catch (err) {}
   };
 
   useEffect(() => {
@@ -198,8 +192,6 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
         e?.stopPropagation();
         await browser.storage.local.set({ activeSidePanelTab: "comments" });
         browser.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" });
-        // console.log('Memory Agent clicked');
-        // You can add your memory agent logic here
       },
     },
     {
@@ -216,8 +208,6 @@ function ToolbarApp({ activeLink, addToHistory }: ToolbarProps) {
         e?.preventDefault();
         e?.stopPropagation();
         toggleBookmark(!bookmarkData?.bookmarked);
-        // console.log('Memory Agent clicked');
-        // You can add your memory agent logic here
       },
     },
     {

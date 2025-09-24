@@ -181,7 +181,6 @@ const OnboardingContent = () => {
       if (personaContentPreferences) {
         setContentData(personaContentPreferences.data as PersonaContentData);
       } else if (identityData && !contentData) {
-        console.log("Triggering content preferences generation");
         generateContent();
       }
     };
@@ -232,7 +231,6 @@ const OnboardingContent = () => {
   // Check if we're in a browser extension context
   useEffect(() => {
     if (!browser || !browser.storage) {
-      console.error("❌ browser extension APIs not available");
       setLoginState((prev) => ({
         ...prev,
         error: "This page must be opened as a browser extension.",
@@ -246,14 +244,11 @@ const OnboardingContent = () => {
       if (tokenCheckIntervalRef.current) {
         clearInterval(tokenCheckIntervalRef.current);
         tokenCheckIntervalRef.current = null;
-        console.log("🧹 Cleaned up token polling interval");
       }
     };
   }, []);
 
   const handleLogin = async () => {
-    console.log("🚀 Starting login process");
-
     setLoginState({
       isLoading: true,
       isWaitingForLogin: false,
@@ -266,10 +261,6 @@ const OnboardingContent = () => {
       const loginWindow = window.open(
         "https://betterstacks.com/login",
         "_blank"
-      );
-      console.log(
-        "🔗 Opened login window:",
-        loginWindow ? "Success" : "Failed"
       );
 
       if (!loginWindow) {
@@ -295,14 +286,10 @@ const OnboardingContent = () => {
       let pollCount = 0;
       tokenCheckIntervalRef.current = setInterval(async () => {
         pollCount++;
-        console.log(
-          `🔍 Polling attempt ${pollCount} - checking browser.storage.local for token`
-        );
 
         try {
           // Check if browser storage is still accessible (Firefox dead object fix)
           if (!browser || !browser.storage || !browser.storage.local) {
-            console.warn("⚠️ Browser storage not accessible, stopping polling");
             if (tokenCheckIntervalRef.current) {
               clearInterval(tokenCheckIntervalRef.current);
               tokenCheckIntervalRef.current = null;
@@ -311,11 +298,6 @@ const OnboardingContent = () => {
           }
 
           const result = await browser.storage.local.get("gqlToken");
-          console.log("🔍 Storage check result:", {
-            hasGoogleToken: !!result.gqlToken,
-            tokenLength: result.gqlToken?.length,
-            pollCount,
-          });
 
           if (result.gqlToken && result.gqlToken.length > 0) {
             console.log("✅ Token detected in storage!");
@@ -343,18 +325,6 @@ const OnboardingContent = () => {
               );
             }
 
-            // Open Import page in new tab
-            try {
-              console.log(
-                "Hurray 🎉 Login successful! Redirecting to import page..."
-              );
-              //   browser.tabs.create({
-              //     url: browser.runtime.getURL("/import.html"),
-              //   });
-            } catch (e) {
-              console.warn("Could not open import page:", e);
-            }
-
             // Update UI to success state
             setLoginState({
               isLoading: false,
@@ -364,14 +334,6 @@ const OnboardingContent = () => {
             });
 
             console.log("✅ Login process completed successfully!");
-
-            // Close this tab after 2 seconds
-            // setTimeout(() => {
-            //   try {
-            //   } catch (e) {
-            //     console.warn("⚠️ Could not close window:", e);
-            //   }
-            // }, 2000);
           }
         } catch (error) {
           console.error("❌ Error checking for token:", error);

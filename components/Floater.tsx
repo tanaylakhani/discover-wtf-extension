@@ -62,7 +62,6 @@ const Floater: React.FC<FloaterProps> = ({
         queryKey: ["get-history", activeLink?.id],
       });
 
-      console.log("Inside useHistory Mutation");
       const previous = queryClient.getQueryData<PublicRandomLink[]>([
         "get-history",
         activeLink?.id,
@@ -72,8 +71,6 @@ const Floater: React.FC<FloaterProps> = ({
         "activeLink"
       );
       if (latestActiveLink) {
-        console.log("Inside useHistory Mutation ", latestActiveLink);
-
         queryClient.setQueryData<PublicRandomLink[]>(
           ["get-history", activeLink?.id],
           (old) => {

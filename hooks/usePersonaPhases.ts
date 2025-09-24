@@ -198,15 +198,9 @@ const generateIdentityAPI = async (): Promise<PersonaIdentityResult> => {
   }
 
   // Fetch browsing data
-  console.log("Fetching browsing history for Phase 1...");
   const browsingHistory = await fetchBrowsingHistory();
 
-  console.log("Fetching bookmarks for Phase 1...");
   const bookmarks = await fetchBookmarks();
-
-  console.log(
-    `Collected ${browsingHistory.length} history entries and ${bookmarks.length} bookmarks for Phase 1`
-  );
 
   // Prepare payload for API
   const payload: PersonaGenerationData = {
@@ -221,9 +215,6 @@ const generateIdentityAPI = async (): Promise<PersonaIdentityResult> => {
 
   while (true) {
     try {
-      console.log(
-        `Calling identity generation API... (attempt ${retryCount + 1})`
-      );
       const response = await fetch(
         `https://orb.stacks.im/api/persona/identity`,
         {
@@ -245,7 +236,6 @@ const generateIdentityAPI = async (): Promise<PersonaIdentityResult> => {
       }
 
       const result: PersonaIdentityData = await response.json();
-      console.log("Identity generated successfully:", result);
 
       return {
         identity: result,
@@ -257,10 +247,6 @@ const generateIdentityAPI = async (): Promise<PersonaIdentityResult> => {
       };
     } catch (apiErr) {
       retryCount++;
-      console.error(
-        `Identity API call failed (attempt ${retryCount}):`,
-        apiErr
-      );
 
       // If we've exceeded reasonable retry attempts, throw the error
       if (retryCount > 5) {
@@ -272,7 +258,6 @@ const generateIdentityAPI = async (): Promise<PersonaIdentityResult> => {
         delay * Math.pow(1.5, retryCount - 1),
         10000
       );
-      console.log(`Retrying identity generation in ${currentDelay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, currentDelay));
     }
   }
@@ -288,9 +273,6 @@ const generateContentPreferencesAPI = async (
 
   while (true) {
     try {
-      console.log(
-        `Calling content preferences API... (attempt ${retryCount + 1})`
-      );
       const response = await fetch(
         `https://orb.stacks.im/api/persona/content-preferences`,
         {
@@ -312,7 +294,6 @@ const generateContentPreferencesAPI = async (
       }
 
       const result: PersonaContentData = await response.json();
-      console.log("Content preferences generated successfully:", result);
 
       return {
         content: result,
@@ -324,10 +305,6 @@ const generateContentPreferencesAPI = async (
       };
     } catch (apiErr) {
       retryCount++;
-      console.error(
-        `Content preferences API call failed (attempt ${retryCount}):`,
-        apiErr
-      );
 
       // If we've exceeded reasonable retry attempts, throw the error
       if (retryCount > 3) {
@@ -339,7 +316,6 @@ const generateContentPreferencesAPI = async (
         delay * Math.pow(1.5, retryCount - 1),
         5000
       );
-      console.log(`Retrying content preferences in ${currentDelay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, currentDelay));
     }
   }
@@ -367,11 +343,8 @@ export const usePersonaIdentity = (
           expiry: Date.now() + WEEK_MS,
         },
       });
-      console.log("Phase 1 identity generated and cache invalidated");
     },
-    onError: (error) => {
-      console.error("Phase 1 identity generation failed:", error);
-    },
+
     // Custom retry logic is handled within the API function
     retry: false,
   });
@@ -402,18 +375,9 @@ export const usePersonaContentPreferences = (
           expiry: Date.now() + WEEK_MS,
         },
       });
+    },
 
-      console.log(
-        "Phase 2 content preferences generated and cache invalidated"
-      );
-    },
-    onError: (error) => {
-      console.error("Phase 2 content preferences generation failed:", error);
-    },
-    // Custom retry logic is handled within the API function
     retry: false,
-    // Only enable if we have a session ID
-    // enabled: !!sessionId,
   });
 };
 
@@ -478,12 +442,7 @@ export const useSessionStatus = (sessionId: string) => {
       return await response.json();
     },
     mutationKey: ["sessionStatus", sessionId],
-    onSuccess: (data) => {
-      console.log("Session status checked:", data);
-    },
-    onError: (error) => {
-      console.error("Session status check failed:", error);
-    },
+
     retry: false,
   });
 };

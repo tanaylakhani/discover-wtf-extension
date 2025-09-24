@@ -19,7 +19,6 @@ function createReactEntrypoint<T extends Record<string, any> = {}>(
   const rootElement = document.getElementById(rootElementId);
 
   if (!rootElement) {
-    console.error(`❌ Root element with id "${rootElementId}" not found`);
     return;
   }
 

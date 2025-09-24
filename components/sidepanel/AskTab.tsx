@@ -66,26 +66,6 @@ const AskTab = ({
   const [openHistory, setOpenHistory] = useState(false);
   const [chatId, setChatId] = useState(uuid());
   const [isPrevChat, setIsPrevChat] = useState(false);
-  // const [historyMessages, setHistoryMessages] = useState<TMessage[] | null>(
-  //   null
-  // );
-
-  // const formattedHistoryMessages = useMemo(
-  //   () =>
-  //     historyMessages?.map(
-  //       (message) =>
-  //         ({
-  //           id: message.id,
-  //           parts: message?.content,
-  //           role: message?.role,
-  //           metadata: {
-  //             createdAt: message?.createdAt,
-  //           },
-  //         } as UIMessage)
-  //     ),
-  //   [historyMessages]
-  // );
-  // console.log({ formattedHistoryMessages });
   const [commentOptionsBar, barBounds] = useMeasure();
   const scrollAreaHeight = `calc(100vh - ${
     height + bounds?.height + barBounds?.height
@@ -169,7 +149,6 @@ const AskTab = ({
 
       const chat = data?.chat as TChat;
       const chatMessages = data?.messages as TMessage[];
-      console.log({ chatMessages });
       const formattedHistoryMessages = chatMessages?.map(
         (message) =>
           ({
@@ -239,9 +218,13 @@ const AskTab = ({
                 <History className="size-4" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="overflow-hidden bg-white translate-x-5 rounded-xl font-inter translate-y-2 p-0 ">
-              {history?.length === 0 ? (
-                <div>No previous chats</div>
+            <PopoverContent className="overflow-hidden bg-white translate-x-5 rounded-xl font-inter  translate-y-2 p-0 ">
+              {isHistoryLoading ? (
+                <div className="p-3 flex items-center justify-center text-sm">
+                  <Loader className="size-4 animate-spin " />
+                </div>
+              ) : history?.length === 0 ? (
+                <div className="p-3 text-sm">No previous chats</div>
               ) : (
                 history?.map((chat, i) => {
                   return (
@@ -249,12 +232,12 @@ const AskTab = ({
                       key={i}
                       onClick={() => handleHistoryClick(chat.id)}
                       className={cn(
-                        "px-3 py-1.5 border-b last:border-none cursor-pointer hover:bg-neutral-50 flex items-center justify-between",
+                        "px-3 py-1.5 last:mb-2 first:mt-2 group border-b last:border-none cursor-pointer hover:bg-neutral-50 flex items-center justify-between",
                         chat?.id === chatId &&
                           "bg-orange-50 hover:bg-orange-100/70"
                       )}
                     >
-                      <span className="text-sm text-neutral-700 tracking-tight ">
+                      <span className="text-sm group-hover:text-neutral-900 text-neutral-700 tracking-tight line-clamp-1 ">
                         {chat?.title}
                       </span>
                       {/* {chat?.id === chatId && (
