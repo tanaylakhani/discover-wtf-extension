@@ -7,6 +7,9 @@
   .font-instrument {
     font-family: "Instrument Serif", serif;
   }
+  .font-inter {
+    font-family: "Inter", sans-serif;
+  }
 }
 
 @layer base {
@@ -77,13 +80,10 @@
   border-color: hsl(var(--border));
 }
 
-.inter-sans {
-  font-family: "Inter", sans-serif;
-}
 #root {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  @apply inter-sans;
+  @apply font-inter;
 }
 
 /* Inter font class */

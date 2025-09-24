@@ -6,19 +6,13 @@ async function bgFetch<T>(
   payload: Record<string, any>
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    console.log("📤 Sending message:", { type, ...payload });
-
     browser.runtime.sendMessage({ type, ...payload }, (response) => {
-      console.log("📥 Received response:", response);
-
       if (browser.runtime.lastError) {
-        console.error("❌ Runtime error:", browser.runtime.lastError);
         reject(new Error(browser.runtime.lastError.message));
         return;
       }
 
       if (response?.error) {
-        console.error("❌ Response error:", response.error);
         reject(new Error(response.error));
         return;
       }
@@ -36,12 +30,10 @@ export function useBookmark(linkId: string) {
   const bookmarkQuery = useQuery({
     queryKey: ["bookmark-status", linkId],
     queryFn: async () => {
-      console.log("🔍 Fetching bookmark status for linkId:", linkId);
       const result = await bgFetch<{ bookmarked: boolean }>(
         "GET_BOOKMARK_STATUS",
         { linkId }
       );
-      console.log("✅ Bookmark status result:", result);
       return result;
     },
     staleTime: 30000,

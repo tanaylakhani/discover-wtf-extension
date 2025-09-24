@@ -1,13 +1,17 @@
+import { TCommentAuthor } from "@/components/sidepanel/ThreadsTab";
 import URL from "@/lib/url";
+import { UIMessage } from "ai";
 import {
   animateGlobeIcon,
   fetchInitialLinks,
+  getGqlToken,
   getRandomUrl,
   hasDiscoverHistoryParam,
   isValidUrl,
   makeCall,
   updateCount,
 } from "../lib/utils";
+import { PageData } from "@/components/Toolbar";
 
 // Global variables to store the extension tab ID and window ID
 let extensionTabId: number | null = null;
@@ -24,19 +28,14 @@ export default defineBackground(async () => {
   initializeContextMenus();
 
   browser.runtime.onStartup.addListener(async () => {
-    console.log("Starup called 🌱💌🌊");
     const { gqlToken } = await browser.storage.local.get("gqlToken");
     await browser.action.setPopup({
       popup: gqlToken ? "" : browser.runtime.getURL("/authPopup.html"),
     });
-
-    // const resp = await makeCall("/recall");
-    // console.log({ resp });
   });
 
   browser.storage.onChanged.addListener(async (changes, areaName) => {
     if (areaName === "local" && changes.gqlToken) {
-      console.log("🚨 Changes Detected");
       const newToken = changes.gqlToken.newValue;
       await browser.action.setPopup({
         popup: newToken ? "" : browser.runtime.getURL("/authPopup.html"),
@@ -55,7 +54,6 @@ export default defineBackground(async () => {
       await browser.storage.local.remove("extensionTabId");
       extensionTabId = null;
       extensionWindowId = null;
-      console.log("Extension window closed, cleared tracking");
     }
   });
 
@@ -104,7 +102,6 @@ async function initializeContextMenus() {
     }
 
     browser.contextMenus.onClicked.addListener(handleContextMenuClick);
-    console.log("✅ Context menus initialized");
   } catch (error) {
     console.error("❌ Error initializing context menus:", error);
   }
@@ -115,8 +112,6 @@ function handleContextMenuClick(
   info: Browser.contextMenus.OnClickData,
   tab?: Browser.tabs.Tab
 ) {
-  // console.log('🖱️ Context menu clicked:', info.menuItemId);
-
   try {
     switch (info.menuItemId) {
       case "discover_login":
@@ -141,8 +136,6 @@ function handleLoginClick() {
 
 export async function handleLogoutClick() {
   try {
-    // console.log('🔓 Starting logout process...');
-
     const authKeys = [
       "googleToken",
       "gqlToken",
@@ -161,8 +154,6 @@ export async function handleLogoutClick() {
       message: "Successfully logged out of Stacks",
     });
   } catch (error) {
-    console.error("❌ Error during logout:", error);
-
     browser.notifications.create({
       type: "basic",
       iconUrl: browser.runtime.getURL("/icon/48.png"),
@@ -232,6 +223,207 @@ async function handleMessage(
     case "LIKE_LINK":
       handleLikeLink(message, sendResponse);
       break;
+    case "GET_HISTORY":
+      const response = await makeCall("/track-visit", {}, 15000);
+      sendResponse({ data: response?.data || [] });
+      break;
+    case "ADD_TO_HISTORY":
+      const { link } = message;
+      sendResponse({ success: true });
+      break;
+    case "GET_USER":
+      try {
+        // Use your existing makeCall utility to fetch user data
+        const resp = await makeCall("/user", {}, 10000);
+        sendResponse({ data: resp?.data });
+      } catch (error) {
+        sendResponse({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    case "GET_COMMENTS":
+      try {
+        const { linkId, sort } = message;
+        const stringifiedParams = new URLSearchParams({
+          linkId,
+          sort,
+        }).toString();
+        const response = await makeCall(`/comment?${stringifiedParams}`);
+        sendResponse({ comments: response?.comments || [] });
+      } catch (error) {
+        sendResponse({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    case "POST_COMMENT":
+      try {
+        const {
+          linkId,
+          message: content,
+          user,
+          file,
+          parentId,
+        }: {
+          message: string;
+          linkId: string;
+          file?: { name: string; type: string; buffer: Uint8Array };
+          user: TCommentAuthor;
+          parentId?: string;
+        } = message;
+        const formData = new FormData();
+        formData.append("content", content);
+        formData.append("user", JSON.stringify(user));
+        // Create Blob
+        if (file) {
+          const reconstructedBuffer = new Uint8Array(file?.buffer).buffer;
+          const blob = new Blob([reconstructedBuffer], { type: file?.type });
+          formData.append("file", blob, file.name);
+        }
+        if (parentId) {
+          formData.append("parentId", parentId);
+        }
+
+        const stringifiedParams = new URLSearchParams({ linkId }).toString();
+        const response = await makeCall(
+          `/comment?${stringifiedParams}`,
+          {
+            method: "POST",
+            body: formData,
+          },
+          6000,
+          false
+        );
+        sendResponse({ comment: response.comment });
+      } catch (error) {
+        sendResponse({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+
+    case "EXTRACT_CONTENT": {
+      const { url } = message;
+      if (!url) {
+        sendResponse({ success: false, error: "No URL provided" });
+      }
+      try {
+        // Use makeCall to fetch markdown from /api/extract
+        const stringifiedParams = new URLSearchParams({ url }).toString();
+        const resp = await makeCall(
+          `/extract?${stringifiedParams}`,
+          {
+            method: "POST",
+          },
+          50000
+        );
+        const markdown = resp?.output;
+        await browser.storage.local.set({ extractedMarkdown: markdown });
+        sendResponse({ success: true });
+      } catch (err) {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      break;
+    }
+    case "GET_SUGGESTED_PROMPTS": {
+      const { pageData }: { pageData: PageData } = message.payload;
+
+      const markdown = `
+      #${pageData?.title}
+      ${pageData?.content}
+      `;
+      const { gqlToken } = await getGqlToken();
+      try {
+        const res = await fetch(`${URL}/api/chat/suggested`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${gqlToken}`,
+          },
+          body: JSON.stringify({
+            markdown: markdown,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.success) {
+          throw new Error(`API error: ${data?.error}`);
+        }
+        sendResponse({ success: true, prompts: data?.prompts || [] });
+      } catch (err) {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      break;
+    }
+    case "GET_COMMENT_LIKE_STATUS": {
+      try {
+        const { commentId } = message;
+        if (!commentId) {
+          sendResponse({
+            liked: false,
+            likeCount: 0,
+            error: "Missing commentId or userId",
+          });
+          break;
+        }
+        const url = `/comment/like?commentId=${encodeURIComponent(commentId)}`;
+        const data = await makeCall(url, undefined, 10000);
+        sendResponse({
+          liked: data?.data?.liked ?? false,
+          likeCount: data?.data?.count ?? 0,
+          error: data?.error || null,
+        });
+      } catch (error) {
+        sendResponse({
+          liked: false,
+          likeCount: 0,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    }
+    case "LIKE_COMMENT": {
+      try {
+        const { commentId, liked } = message;
+        if (!commentId || typeof liked !== "boolean") {
+          sendResponse({
+            success: false,
+            error: "Missing commentId or liked",
+          });
+          break;
+        }
+
+        // Use the correct API route and headers (no userId needed)
+        const postUrl = `/comment/like?commentId=${encodeURIComponent(
+          commentId
+        )}`;
+        const postData = await makeCall(postUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ liked }),
+        });
+        sendResponse({
+          success: postData?.success,
+          error: postData?.error || null,
+          liked: postData?.data?.liked ?? liked,
+          likeCount: postData?.data?.count ?? 0,
+        });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    }
   }
 }
 
@@ -281,7 +473,6 @@ async function handleTabRemoval(tabId: number, removeInfo: any) {
     // await browser.storage.local.set({ urlVisitCount: 0 });
     extensionTabId = null;
     extensionWindowId = null;
-    console.log("Extension tab closed, cleared tracking");
   }
 }
 
@@ -312,8 +503,6 @@ const handleOpenSidePanel = (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("opensidebar", extensionTabId);
-
     browser.sidePanel.open({
       tabId: sender?.tab?.id as number,
       windowId: sender?.tab?.windowId,
@@ -334,7 +523,6 @@ const handleDisablePopup = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("Disabling popup");
     await browser.action.setPopup({ popup: "" });
     sendResponse({ success: true });
   } catch (error) {
@@ -348,7 +536,6 @@ const handleBookmarkLink = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log({ message });
     const params = {
       linkId: message?.data?.linkId,
     };
@@ -369,7 +556,6 @@ const handleLikeLink = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log({ message });
     const params = {
       linkId: message?.data?.linkId,
     };
@@ -390,7 +576,6 @@ const handleGetLikeStatus = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🔍 Getting like status:", message);
     const linkId = message?.linkId;
 
     try {
@@ -399,18 +584,14 @@ const handleGetLikeStatus = async (
         liked: boolean;
         count: number;
       };
-      console.log("✅ Server like status response:", res);
       sendResponse(res);
     } catch (serverError) {
-      console.log("⚠️ Server request failed, using local data:", serverError);
-      // Fallback to local data if server fails
       sendResponse({
         success: false,
         error: (serverError as Error)?.message,
       });
     }
   } catch (error) {
-    console.error("❌ Error in handleGetLikeStatus:", error);
     sendResponse({
       liked: false,
       count: 0,
@@ -423,7 +604,6 @@ const handleGetBookmarkStatus = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🔍 Getting bookmark status:", message);
     const linkId = message?.linkId;
 
     try {
@@ -431,17 +611,9 @@ const handleGetBookmarkStatus = async (
       const res = (await makeCall(`/bookmark?linkId=${linkId}`, {}, 10000)) as {
         data: { bookmarked: boolean };
       };
-      console.log(
-        "handleGetBookmarkStatus:✅ Server bookmark status response:",
-        res?.data
-      );
+
       sendResponse(res?.data);
     } catch (serverError) {
-      console.log(
-        "handleGetBookmarkStatus:⚠️ Server request failed, using local data:",
-        serverError
-      );
-      // Fallback to local data if server fails
       sendResponse({
         bookmarked: false,
         success: false,
@@ -449,7 +621,6 @@ const handleGetBookmarkStatus = async (
       });
     }
   } catch (error) {
-    console.error("❌ Error in handleGetBookmarkStatus:", error);
     sendResponse({
       success: false,
       bookmarked: false,
@@ -463,7 +634,6 @@ const handleToggleLike = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🔄 Toggling like:", message);
     const linkId = message?.linkId;
     const liked = message?.liked;
 
@@ -483,7 +653,6 @@ const handleToggleLike = async (
       error: null,
     });
   } catch (error) {
-    console.error("❌ Error toggling like:", error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -495,7 +664,6 @@ const handleToggleBookmark = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🔄 Toggling bookmark:", message);
     const linkId = message?.linkId;
     const bookmarked = message?.bookmarked;
 
@@ -515,7 +683,6 @@ const handleToggleBookmark = async (
       error: null,
     });
   } catch (error) {
-    console.error("❌ Error toggling like:", error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -528,7 +695,6 @@ const handleEnablePopup = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🌱 Enabling Auth Popup");
     await browser.action.setPopup({
       popup: browser.runtime.getURL("/authPopup.html"),
     });
@@ -545,7 +711,6 @@ const handleSetGQLToken = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("Setting GQL Token", message.value);
     const storageData = {
       googleToken: message?.value,
       gqlToken: message?.value,
@@ -611,7 +776,6 @@ const handleFetchApiData = async (
       data,
     });
   } catch (error) {
-    console.error("Error fetching API data:", error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",
@@ -625,7 +789,6 @@ const handleMarkLinkAsVisited = async (
   sendResponse: (response?: any) => void
 ) => {
   try {
-    console.log("🌱 Marking link as visited:", message);
     const linkId = message?.data?.linkId;
 
     // Also make API call in background (don't wait for it)
@@ -641,7 +804,6 @@ const handleMarkLinkAsVisited = async (
       error: null,
     });
   } catch (error) {
-    console.error("❌ Error marking link as visited:", error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

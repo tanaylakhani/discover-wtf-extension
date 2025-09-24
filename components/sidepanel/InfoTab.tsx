@@ -1,12 +1,29 @@
 import { cleanUrl, PublicRandomLink } from "@/lib/utils";
 import { Separator } from "../ui/separator";
+import React, { useEffect, useState } from "react";
 
 type InfoTabProps = {
-  activeLink: PublicRandomLink | null;
   activeTab: string;
 };
 
-const InfoTab = ({ activeLink, activeTab }: InfoTabProps) => {
+const InfoTab = ({ activeTab }: InfoTabProps) => {
+  const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(null);
+
+  useEffect(() => {
+    // Initial fetch
+    browser.storage.local.get("activeLink").then((res) => {
+      if (res.activeLink) setActiveLink(res.activeLink);
+    });
+    // Listen for changes
+    const handleStorage = (changes: any, area: string) => {
+      if (area === "local" && changes.activeLink) {
+        setActiveLink(changes.activeLink.newValue);
+      }
+    };
+    browser.storage.onChanged.addListener(handleStorage);
+    return () => browser.storage.onChanged.removeListener(handleStorage);
+  }, []);
+
   return (
     <div className="flex flex-col gap-4 px-4 py-2">
       {activeLink?.screenshot_url && (

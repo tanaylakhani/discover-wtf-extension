@@ -1,15 +1,19 @@
 "use client";
-import { makeCall, makeCommentsCall, PublicRandomLink } from "@/lib/utils";
+import { User } from "@/lib/graphql/user";
+import { cn, fileToBuffer, PublicRandomLink } from "@/lib/utils";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ListFilter } from "lucide-react";
 import React from "react";
 import useMeasure from "react-use-measure";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ScrollArea } from "../ui/scroll-area";
 import { Skeleton } from "../ui/skeleton";
-import ThreadChatBox from "./ThreadChatBox";
-import { User } from "@/lib/graphql/user";
 import CommentCard from "./comment";
-type TCommentAuthor = {
+import ThreadChatBox from "./ThreadChatBox";
+import { v4 as uuid } from "uuid";
+export type TCommentAuthor = {
   id: string;
   name: string | null | undefined;
   username: string | null | undefined;
@@ -26,14 +30,26 @@ export type Comment = {
   isPrivate: boolean;
   commentedAt: Date;
   media: { id: string; url: string; type: string; createdAt: Date }[] | null;
+  parentId?: string | null; // 👈 parent reference
+  replies?: Comment[];
+  replyCount: number;
+  likeCount: number;
+  liked: boolean;
 };
 
 type ThreadsTabProps = {
   activeLink: PublicRandomLink | null;
   activeTab: string;
-  user: User;
+  user?: User;
   height: number;
 };
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+  { value: "most_replied", label: "Most Replied" },
+  { value: "least_replied", label: "Least Replied" },
+];
 
 const ThreadsTab: React.FC<ThreadsTabProps> = ({
   activeLink,
@@ -41,24 +57,24 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
   height,
 }) => {
   const queryClient = useQueryClient();
-
+  const [toReply, setToReply] = React.useState<Comment | null>(null);
   const [input, setInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
-
+  const [sortOption, setSortOption] = React.useState(SORT_OPTIONS[0].value);
   const {
     data,
     isLoading: isFetchingComments,
     refetch,
   } = useQuery({
-    queryKey: ["get-comments", activeLink?.id],
+    queryKey: ["get-comments", activeLink?.id, sortOption],
     queryFn: async () => {
-      const stringifiedParams = new URLSearchParams({
+      const response = await browser.runtime.sendMessage({
+        type: "GET_COMMENTS",
         linkId: activeLink?.id as string,
-      }).toString();
-
-      const response = await makeCall(`/comment?${stringifiedParams}`);
-      console.log("fetching comments", response);
-      return (response?.comments || []) as Comment[];
+        sort: sortOption,
+      });
+      const flatComments = (response?.comments || []) as Comment[];
+      return flatComments; // 👈 return nested tree
     },
     // enabled: !!activeLink?.id,
   });
@@ -68,126 +84,154 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
       files,
       message,
       user,
+      parentId,
     }: {
       message: string;
       files: File[];
       user: TCommentAuthor;
+      parentId?: string | null;
     }) => {
-      const params = {
-        linkId: activeLink?.id as string,
-      };
-      const stringifiedParams = new URLSearchParams(params).toString();
-      console.log("Posting comment with params:", stringifiedParams);
-      const formData = new FormData();
-      formData.append("content", message);
-      formData.append("user", JSON.stringify(user));
-      if (files.length > 0) {
-        formData.append("file", files[0]);
+      let filePayload = undefined;
+      if (files[0]) {
+        const buffer = await fileToBuffer(files[0]);
+        const uint8Array = new Uint8Array(buffer);
+        filePayload = {
+          buffer: Array.from(uint8Array),
+          type: files[0]?.type,
+          name: files[0]?.name,
+        };
       }
-      console.log({ formData: Array.from(formData.entries()) });
-      const response = await makeCommentsCall(`/comment?${stringifiedParams}`, {
-        method: "POST",
-        body: formData,
-      });
 
+      const response = await browser.runtime.sendMessage({
+        type: "POST_COMMENT",
+        linkId: activeLink?.id as string,
+        message,
+        file: filePayload,
+        user,
+        parentId: parentId || null,
+      });
       return response.comment;
     },
 
-    // Optimistic update
-    onMutate: async ({ message, files, user }) => {
+    onMutate: async ({ message, files, user, parentId }) => {
       setInput("");
       setFiles([]);
 
       await queryClient.cancelQueries({
-        queryKey: ["get-comments", activeLink?.id as string],
+        queryKey: ["get-comments", activeLink?.id as string, sortOption],
       });
+
       const previousComments = queryClient.getQueryData<Comment[]>([
         "get-comments",
         activeLink?.id,
+        sortOption,
       ]);
 
       const optimisticComment: Comment = {
-        id: `temp-${Date.now()}`,
+        id: uuid(),
         linkId: activeLink?.id || "",
         userId: user?.id,
         content: message,
-        user: user,
+        user,
         isPrivate: false,
         commentedAt: new Date(),
         media: files.length
           ? [
               {
-                id: `temp-${Date.now()}-${files[0].name}`,
+                id: uuid(),
                 url: URL.createObjectURL(files[0]),
                 type: files[0].type.startsWith("image/") ? "image" : "video",
                 createdAt: new Date(),
               },
             ]
           : null,
+        parentId: parentId || null,
+        replies: [],
+        replyCount: 0,
+        liked: false,
+        likeCount: 0,
       };
 
       queryClient.setQueryData<Comment[]>(
-        ["get-comments", activeLink?.id],
-        (old) => [optimisticComment, ...(old || [])]
-      );
+        ["get-comments", activeLink?.id, sortOption],
+        (old) => {
+          if (!old) return [optimisticComment];
 
-      return { previousComments, optimisticComment, message, files };
-    },
-    // On success, replace optimistic comment with real data
-    onSuccess: (newComment, variables, context) => {
-      console.log("🎉 onSuccess called with:", newComment);
+          if (!parentId) {
+            // Top-level comment → prepend
+            return [optimisticComment, ...old];
+          }
 
-      queryClient.setQueryData<Comment[]>(
-        ["get-comments", activeLink?.id],
-        (oldComments) => {
-          if (!oldComments || !context?.optimisticComment) return oldComments;
+          // Reply → insert into parent
+          const insertReply = (comments: Comment[]): Comment[] =>
+            comments.map((c) => {
+              if (c.id === parentId) {
+                return {
+                  ...c,
+                  replies: [...(c.replies || []), optimisticComment],
+                };
+              }
+              return {
+                ...c,
+                replies: c.replies ? insertReply(c.replies) : [],
+              };
+            });
 
-          // Replace the optimistic comment with the real one
-          const updatedComments = oldComments.map((comment) =>
-            comment.id === context.optimisticComment.id ? newComment : comment
-          );
-          console.log(
-            "🔄 Replacing optimistic with real comment:",
-            updatedComments
-          );
-          return updatedComments;
+          return insertReply(old);
         }
       );
 
-      // Clear the input on success
-      setInput("");
-      setFiles([]);
+      return { previousComments, optimisticComment, parentId, message, files };
     },
 
-    // On error, rollback to previous state
-    onError: (error, variables, context) => {
-      console.log("❌ onError called:", error);
+    onSuccess: (newComment, _, context) => {
+      // if (toReply && newComment.parentId !== toReply.id) {
+      setToReply(null);
+      // }
+      queryClient.setQueryData<Comment[]>(
+        ["get-comments", activeLink?.id, sortOption],
+        (old) => {
+          if (!old || !context?.optimisticComment) return old;
 
+          const replaceOptimistic = (comments: Comment[]): Comment[] =>
+            comments.map((c) => {
+              if (c.id === context.optimisticComment.id) return newComment;
+              return {
+                ...c,
+                replies: c.replies ? replaceOptimistic(c.replies) : [],
+              };
+            });
+
+          return replaceOptimistic(old);
+        }
+      );
+    },
+
+    onError: (error, _, context) => {
       if (context?.previousComments) {
         queryClient.setQueryData(
-          ["get-comments", activeLink?.id],
+          ["get-comments", activeLink?.id, sortOption],
           context.previousComments
         );
-        console.log("🔙 Rolled back to previous comments");
       }
       if (context?.message || context?.files) {
-        setInput(context.message); // Repopulate input with failed message
-        setFiles(context.files); // Repopulate files with failed files
+        setInput(context.message);
+        setFiles(context.files);
       }
-      console.error("Failed to post comment:", error);
     },
 
-    // Always refetch after error or success to ensure consistency
     onSettled: () => {
-      console.log("🔄 onSettled called, invalidating queries");
       queryClient.invalidateQueries({
-        queryKey: ["get-comments", activeLink?.id],
+        queryKey: ["get-comments", activeLink?.id, sortOption],
       });
     },
   });
 
   const [ref, bounds] = useMeasure();
-  const scrollAreaHeight = `calc(100vh - ${height + bounds?.height}px)`;
+  const [commentOptionsBar, barBounds] = useMeasure();
+  const scrollAreaHeight = `calc(100vh - ${
+    height + bounds?.height + barBounds.height
+  }px)`;
   const viewportRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -198,28 +242,68 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
       });
     }
   }, [data?.length]);
-  console.log(data?.length);
+
   return (
     <div className="">
-      {isFetchingComments ? (
-        <LoadingSkeleton />
-      ) : data!.length === 0 ? (
-        <EmptyComments height={scrollAreaHeight} />
-      ) : (
-        <ScrollArea
-          style={{ height: scrollAreaHeight }}
-          className=" overflow-y-auto "
-        >
-          <ScrollAreaPrimitive.Viewport>
-            <div ref={viewportRef} className="mb-10">
-              {data!.map((comment, index) => (
-                <CommentCard comment={comment} key={index} />
-              ))}
-            </div>
-          </ScrollAreaPrimitive.Viewport>
-          {/* </ScrollAreaPrimitive.Viewport> */}
-        </ScrollArea>
-      )}
+      <div
+        ref={commentOptionsBar}
+        className="px-4 py-2 flex items-center text-neutral-800 justify-between border-b border-neutral-200"
+      >
+        <div>Comments ({data?.length || 0})</div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button size={"icon"} variant={"outline"}>
+              <ListFilter className="stroke-neutral-900" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="bg-white font-inter text-sm font-medium -translate-x-3 p-0 rounded-xl w-[180px]">
+            {SORT_OPTIONS.map((option) => {
+              return (
+                <div
+                  key={option.value}
+                  className={cn(
+                    " border-t first:border-none px-3 first:mt-2 last:mb-2 py-1 border-neutral-200 cursor-pointer w-full justify-start",
+                    sortOption === option.value
+                      ? "text-neutral-900"
+                      : "text-neutral-700"
+                  )}
+                  onClick={() => setSortOption(option.value)}
+                >
+                  {option.label}
+                </div>
+              );
+            })}
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      <ScrollArea
+        style={{ height: scrollAreaHeight }}
+        className=" overflow-y-auto "
+      >
+        <ScrollAreaPrimitive.Viewport>
+          <div ref={viewportRef} className="mb-10">
+            {isFetchingComments ? (
+              <LoadingSkeleton />
+            ) : data!.length === 0 ? (
+              <EmptyComments height={scrollAreaHeight} />
+            ) : (
+              data!.map((comment, index) => (
+                <CommentCard
+                  sortOption={sortOption}
+                  toReply={toReply}
+                  onReplyClick={setToReply}
+                  comment={comment}
+                  isPending={isPending}
+                  activeLinkId={activeLink?.id as string}
+                  key={comment.id}
+                />
+              ))
+            )}
+          </div>
+        </ScrollAreaPrimitive.Viewport>
+        {/* </ScrollAreaPrimitive.Viewport> */}
+      </ScrollArea>
       <div
         ref={ref}
         className="pb-2 px-2 flex items-center justify-center gap-2"
@@ -236,16 +320,15 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
                 message: msg,
                 files,
                 user: {
-                  id: user.id,
-                  name: user.name,
-                  avatar: user.profile_image_url,
-                  email: user?.email,
-                  username: user?.username,
+                  id: user!.id,
+                  name: user!.name,
+                  avatar: user!.profile_image_url,
+                  email: user!.email,
+                  username: user!.username,
                 },
+                parentId: toReply?.id || null,
               });
-            } catch (error) {
-              console.error("Failed to submit comment:", error);
-            }
+            } catch (error) {}
           }}
         />
       </div>
@@ -259,12 +342,12 @@ export const LoadingSkeleton = () => {
       {[...Array.from({ length: 10 })].map((_, index) => (
         <div
           key={index}
-          className="px-2 bg-white shadow-sm pt-2 pb-4 border last:mb-24 border-neutral-200 first:mt-0 mt-2 rounded-xl"
+          className="px-2 bg-white py-2 last:mb-24 first:mt-0 mt-2 flex items-center justify-center"
         >
-          <Skeleton className="border h-[160px] w-full object-cover overflow-hidden bg-neutral-200 border-neutral-200 rounded-xl" />
-          <div className="mt-2 space-y-2">
-            <Skeleton className="bg-neutral-200 flex flex-col items-start justify-center px-4 h-8 w-full" />
-            <Skeleton className="bg-neutral-200 h-6 w-full" />
+          <Skeleton className="border size-14 object-cover overflow-hidden bg-neutral-200 border-neutral-200 rounded-xl" />
+          <div className="ml-2 flex-1 flex flex-col w-full space-y-2">
+            <Skeleton className="bg-neutral-200 flex flex-col items-start justify-center px-4 h-6 w-full" />
+            <Skeleton className="bg-neutral-200 h-4 w-full" />
           </div>
         </div>
       ))}

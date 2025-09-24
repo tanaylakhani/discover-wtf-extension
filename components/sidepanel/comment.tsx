@@ -1,45 +1,157 @@
-import { Dot } from "lucide-react";
+import { cn, timeAgo, TUser } from "@/lib/utils";
+import {
+  Dot,
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  Reply,
+  Share2,
+  SmilePlus,
+  Trash2,
+} from "lucide-react";
+import React from "react";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Comment } from "./ThreadsTab";
+import { useQueryClient } from "@tanstack/react-query";
+import { useDeleteComment } from "@/hooks/useLikeComment";
 
 type TCommentProps = {
   comment: Comment;
+  toReply: Comment | null;
+  activeLinkId: string;
+  onReplyClick?: (comment: Comment | null) => void;
+  sortOption: string;
+  isPending: boolean;
 };
 
-const CommentCard = ({ comment }: TCommentProps) => {
+const CommentCard = ({
+  comment,
+  onReplyClick,
+  toReply,
+  activeLinkId,
+  sortOption,
+  isPending: isAddingComment,
+  isReply = false,
+}: TCommentProps & { isReply?: boolean }) => {
+  const [showReplies, setShowReplies] = React.useState(false);
+  const [show, setShow] = React.useState(false);
+  const { toggleLike, isPending } = useLikeComment(
+    comment?.id,
+    activeLinkId,
+    sortOption
+  );
+  const { mutate: deleteComment } = useDeleteComment(activeLinkId, sortOption);
+  const icons = [
+    {
+      title: "like",
+      icon: Heart,
+      fill: comment?.liked ? "red" : "none",
+      likeCount: Number(comment?.likeCount), // isFetching: isLoading,
+      onClick: () => {
+        if (isPending) return;
+        toggleLike(comment?.liked);
+      },
+    },
+    {
+      title: "comment",
+      icon: MessageCircle,
+
+      onClick: () => {},
+    },
+    { title: "react", icon: SmilePlus, onClick: () => {} },
+  ];
+  const queryClient = useQueryClient();
+  const userData = queryClient.getQueryData<TUser>(["get-user"]);
+  const isUsersComment = comment?.userId === userData?.id;
+  const commentOptions = [
+    {
+      icon: Reply,
+      name: "Reply",
+      onClick: () => {
+        onReplyClick?.(toReply ? null : comment);
+      },
+    },
+    { icon: Share2, name: "Share", onClick: () => {} },
+    ...(isUsersComment
+      ? [
+          {
+            icon: Trash2,
+            name: "Delete",
+            onClick: () => {
+              deleteComment(comment.id);
+              setShow(false);
+            },
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div
-      key={comment.id} // Use comment ID as key, fallback to index
-      className="border-b flex items-start justify-center w-full px-6 border-neutral-200 py-4"
+      className={cn(
+        "flex items-start justify-center w-full px-6 py-4 font-inter",
+        isReply
+          ? "border border-neutral-200 rounded-xl mt-2 px-4 py-2 "
+          : "border-b border-neutral-200",
+        toReply?.id === comment.id && "bg-orange-50"
+      )}
     >
-      <img
-        className="size-10 rounded-full object-cover"
-        src={comment?.user?.avatar as string}
-      />
-      <div className="flex-1 ml-3 flex flex-col w-full">
-        <div className="flex mb-2 items-center justify-center w-full">
+      {!isReply && (
+        <img
+          className="size-8 mt-1 rounded-full object-cover"
+          src={comment?.user?.avatar as string}
+        />
+      )}
+      <div className={cn("flex-1 flex flex-col w-full", !isReply && " ml-3")}>
+        <div className="flex mb-2 items-center justify-between w-full">
           <div className=" text-base leading-tight flex flex-col flex-1">
-            <h2 className="font-medium leading-none text-sm">
-              {comment?.user?.name}
-            </h2>
             <div className="flex items-center justify-start">
-              <span className="text-sm text-neutral-700 font-medium">
-                {comment?.user?.username
-                  ? `@${comment?.user?.username}`
-                  : comment?.user?.email}
-              </span>
+              <h2 className="font-medium text-neutral-700 tracking-tight text-sm leading-none">
+                {comment?.user?.name}
+              </h2>
               <Dot className="size-3" />
-              <span className="text-xs font-medium text-neutral-700 ">
-                {new Date(comment?.commentedAt).toDateString()}
+              <span className="text-sm font-medium text-neutral-600 ">
+                {timeAgo(new Date(comment?.commentedAt))}
               </span>
             </div>
           </div>
+          <div>
+            <Popover open={show} onOpenChange={setShow}>
+              <PopoverTrigger disabled={isAddingComment} asChild>
+                <Button
+                  size={"icon"}
+                  className="hover:bg-neutral-50 rounded-full transition-all"
+                  variant="ghost"
+                >
+                  <MoreHorizontal className="size-4 stroke-neutral-800" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[120px] rounded-xl p-0 bg-white border-neutral-200 border -translate-x-4">
+                {/**/}
+                {commentOptions.map((option) => {
+                  return (
+                    <div
+                      onClick={option.onClick}
+                      className="w-full group border-t first:border-none  cursor-pointer border-neutral-200 flex items-center justify-start px-3 py-1 first:mt-2 last:mb-2"
+                    >
+                      <option.icon className="size-4 " />
+                      <span className="text-sm group-hover:text-neutral-900  font-inter ml-2 font-medium text-neutral-700 ">
+                        {option.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
-        <p className="text-sm  font-medium opacity-90">
+        <p className="text-sm text-neutral-800 font-medium opacity-90">
           {comment.content?.split("\n").map((line, i) => (
-            <span key={i}>
-              {line}
-              <br />
-            </span>
+            <>
+              <div key={i}>{line}</div>
+              <br className="my-1" />
+            </>
           ))}
         </p>
         {comment?.media && (
@@ -66,9 +178,55 @@ const CommentCard = ({ comment }: TCommentProps) => {
             ))}
           </div>
         )}
-        {/* {comment.id.startsWith("temp-") && (
-                <span className="text-xs text-gray-500 italic">Sending...</span>
-                )} */}
+        <div className="w-full mt-4 flex items-center justify-between">
+          <div className=" flex items-center justify-start space-x-4">
+            {!isReply &&
+              icons.map(({ title, icon, onClick, fill, likeCount }, i) => (
+                <button
+                  onClick={onClick}
+                  key={title}
+                  className="flex items-center justify-center space-x-1"
+                >
+                  {React.createElement(icon, {
+                    fill: fill || "none",
+                    className: "size-4 stroke-neutral-900 opacity-70",
+                  })}
+
+                  {i === 0 && (
+                    <span className="text-neutral-600 text-sm">
+                      {typeof likeCount === "number" && !isNaN(likeCount)
+                        ? likeCount
+                        : 0}
+                    </span>
+                  )}
+                </button>
+              ))}
+          </div>
+          {comment.replies!?.length > 0 && (
+            <div
+              className="tracking-tight text-sm text-neutral-600 cursor-pointer"
+              onClick={() => setShowReplies(!showReplies)}
+            >
+              {showReplies ? "Hide Replies" : "Show Replies"}
+            </div>
+          )}
+        </div>
+
+        {showReplies && comment.replies!?.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {comment.replies!?.map((reply) => (
+              <CommentCard
+                sortOption={sortOption}
+                toReply={toReply}
+                key={reply.id}
+                comment={reply}
+                activeLinkId={activeLinkId}
+                isPending={isAddingComment}
+                isReply={true}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

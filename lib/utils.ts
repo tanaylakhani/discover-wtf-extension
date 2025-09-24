@@ -21,15 +21,12 @@ export const getFirstName = (name: string) => {
   return name?.split(" ")[0];
 };
 
-
-
 export const openSidePanel = async () => {
   try {
     const [tab] = await browser.tabs.query({
       active: true,
       currentWindow: true,
     });
-    console.log({ tab });
     if (!tab?.id) return;
 
     await browser.sidePanel.setOptions({
@@ -39,9 +36,7 @@ export const openSidePanel = async () => {
     });
 
     await browser.sidePanel.open({ tabId: tab.id });
-  } catch (error) {
-    console.log("error opening side panel:", error);
-  }
+  } catch (error) {}
 };
 
 export const getRandomUrl = async (): Promise<string> => {
@@ -63,7 +58,6 @@ export const getRandomUrl = async (): Promise<string> => {
   let unvisited = links.filter((link) => !visited.has(link.id));
 
   if (unvisited.length === 0) {
-    console.log("fetching new links for next page:", currentPage);
     const newLinks = await fetchNextPage(currentPage);
     unvisited = newLinks!.filter((link) => !visited.has(link.id));
   }
@@ -77,6 +71,7 @@ export const getRandomUrl = async (): Promise<string> => {
     visitedLinkIds: [...visited],
     activeLink: randomLink,
   });
+
   markAsVisited(randomLink);
 
   return randomLink?.target_url;
@@ -94,10 +89,7 @@ const markAsVisited = async (link: PublicRandomLink) => {
       data: { linkId: link.id },
     });
   } catch (error) {
-    console.error(
-      "------Error marking link as visited in BACKGROUND SCRIPT-------:",
-      error
-    );
+    console.error("MARK_AS_VISITED:", error);
   }
 };
 
@@ -106,7 +98,6 @@ export const updateCount = async () => {
     const currentCount = data.urlVisitCount || 0;
     const newCount = currentCount + 1;
     browser.storage.local.set({ urlVisitCount: newCount });
-    console.log("Updated URL visit count:", newCount);
   });
 };
 
@@ -118,7 +109,8 @@ export const updateCount = async () => {
 export const makeCall = async (
   endpoint: string,
   options: RequestInit = {},
-  timeout = 6000 // in milliseconds
+  timeout = 10000,
+  addContentTypeHeader = true
 ) => {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
@@ -131,13 +123,20 @@ export const makeCall = async (
       ...options,
       signal: controller.signal,
       headers: {
-        "Content-Type": "application/json",
+        ...options.headers,
+        ...(addContentTypeHeader && {
+          "Content-Type":
+            typeof options.headers === "object" &&
+            options.headers !== null &&
+            "Content-Type" in options.headers
+              ? (options.headers as Record<string, string>)["Content-Type"]
+              : "application/json",
+        }),
         Authorization: `Bearer ${token.gqlToken}`,
       },
     });
 
     const data = await response.json().catch(() => ({}));
-    console.log({ data });
     if (!response.ok) {
       const message = data?.error || "Unknown error occurred";
       const error = new Error(message);
@@ -213,33 +212,23 @@ export const fetchInitialLinks = async () => {
   const { links } = await browser.storage.local.get("links");
 
   if (!links || links.length === 0) {
-    console.log("No Links found in storage, fetching from server...");
     try {
       const response = await makeCall("/random", {}, 10000);
-      console.log({ response });
       if (response?.data?.random_links) {
         await browser.storage.local.set({
           links: response.data.random_links,
           currentPage: 1,
         });
-        console.log("Links fetched and stored successfully");
         return response.data.random_links as PublicRandomLink[];
-      } else {
-        console.error("No links found in response");
       }
     } catch (error) {
-      console.error("Error fetching links:", error);
+      console.error("FETCH_INITIAL_LINKS:", error);
     }
   }
 };
 
 const fetchNextPage = async (currentPage: number) => {
-  console.log("Fetching the next batch of links for page:", currentPage);
   const nextPage = currentPage + 1;
-  // const params = {
-  //   currentPage: nextPage.toString(),
-  // };
-  // const stringifiedParams = new URLSearchParams(params).toString();
 
   const response = await makeCall("/random", {}, 10000);
   const newLinks = response?.data?.random_links as PublicRandomLink[];
@@ -355,4 +344,32 @@ export const makeCommentsCall = async (
 export function capitalizeFirstLetter(str: string): string {
   if (!str) return str;
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+export async function fileToBuffer(file: File): Promise<ArrayBuffer> {
+  return await file.arrayBuffer();
+}
+
+export function timeAgo(date: Date): string {
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - date?.getTime()) / 1000); // in seconds
+
+  if (diff < 60) {
+    return `${diff}s ago`;
+  } else if (diff < 3600) {
+    const minutes = Math.floor(diff / 60);
+    return `${minutes}m ago`;
+  } else if (diff < 86400) {
+    const hours = Math.floor(diff / 3600);
+    return `${hours}h ago`;
+  } else if (diff < 2592000) {
+    const days = Math.floor(diff / 86400);
+    return `${days}d ago`;
+  } else if (diff < 31536000) {
+    const months = Math.floor(diff / 2592000);
+    return `${months}mo ago`;
+  } else {
+    const years = Math.floor(diff / 31536000);
+    return `${years}y ago`;
+  }
 }

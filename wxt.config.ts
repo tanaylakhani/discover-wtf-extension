@@ -7,6 +7,10 @@ export default defineConfig({
     action: {},
     host_permissions: ["http://localhost:3001/*"],
     page_action: {},
+    content_security_policy: {
+      extension_pages:
+        "script-src 'self'; object-src 'self'; img-src 'self' https: data: blob:",
+    },
     commands: {
       "trigger-action-click": {
         suggested_key: {

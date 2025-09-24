@@ -103,15 +103,9 @@ const generatePersonaAPI = async (): Promise<PersonaGenerationResult> => {
   }
 
   // Fetch browsing data
-  console.log("Fetching browsing history...");
   const browsingHistory = await fetchBrowsingHistory();
 
-  console.log("Fetching bookmarks...");
   const bookmarks = await fetchBookmarks();
-
-  console.log(
-    `Collected ${browsingHistory.length} history entries and ${bookmarks.length} bookmarks`
-  );
 
   // Prepare payload for API
   const payload: PersonaGenerationData = {
@@ -126,9 +120,6 @@ const generatePersonaAPI = async (): Promise<PersonaGenerationResult> => {
 
   while (true) {
     try {
-      console.log(
-        `Calling persona generation API... (attempt ${retryCount + 1})`
-      );
       const response = await fetch(
         `https://orb.stacks.im/api/persona/generate`,
         {
@@ -148,7 +139,6 @@ const generatePersonaAPI = async (): Promise<PersonaGenerationResult> => {
       }
 
       const result: PersonaResponse = await response.json();
-      console.log("Persona generated successfully:", result);
 
       return {
         persona: result,
@@ -160,7 +150,6 @@ const generatePersonaAPI = async (): Promise<PersonaGenerationResult> => {
       };
     } catch (apiErr) {
       retryCount++;
-      console.error(`API call failed (attempt ${retryCount}):`, apiErr);
 
       // If we've exceeded reasonable retry attempts, throw the error
       if (retryCount > 10) {
@@ -172,7 +161,6 @@ const generatePersonaAPI = async (): Promise<PersonaGenerationResult> => {
         delay * Math.pow(1.5, retryCount - 1),
         10000
       );
-      console.log(`Retrying in ${currentDelay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, currentDelay));
     }
   }
@@ -192,11 +180,8 @@ export const usePersonaGeneration = (
       if (setState) {
         setState(data.persona);
       }
-      console.log("Persona generated and cache invalidated");
     },
-    onError: (error) => {
-      console.error("Persona generation failed:", error);
-    },
+
     // Custom retry logic is handled within the API function
     retry: false,
   });

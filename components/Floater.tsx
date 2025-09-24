@@ -1,19 +1,8 @@
-import rabbit from "@/assets/rabbit-hole-icon.gif";
-import spiral from "@/assets/spiral.png";
 import "@/entrypoints/style.css";
-import { useLike } from "@/hooks/useLike";
-import { cn, PublicRandomLink } from "@/lib/utils";
+import { PublicRandomLink } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  AnnotationDots,
-  Bookmark,
-  HeartRounded,
-  MagicWand01,
-  Plus,
-  X,
-} from "@untitled-ui/icons-react";
-import { AnimatePresence, motion } from "framer-motion";
 import React, { useState } from "react";
+import ToolbarApp from "./Toolbar";
 type FloaterProps = {
   activeLink: PublicRandomLink | null;
   urlVisitCount: number;
@@ -32,20 +21,8 @@ const Floater: React.FC<FloaterProps> = ({
   activeLink: link,
   urlVisitCount,
 }) => {
-  const [count, setCount] = useState(urlVisitCount || 0);
   const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(link);
-  const {
-    liked,
-    toggleLike,
-    count: likeCount,
-    pending: isLikePending,
-  } = useLike(link?.id as string);
-  const {
-    bookmarkQuery,
-    toggleBookmark,
-    pending: isBookmarkPending,
-  } = useBookmark(link?.id as string);
-  const bookmarkData = bookmarkQuery?.data;
+  const [count, setCount] = useState(urlVisitCount || 0);
 
   const queryClient = useQueryClient();
   const addToHistory = useMutation({
@@ -85,7 +62,6 @@ const Floater: React.FC<FloaterProps> = ({
         queryKey: ["get-history", activeLink?.id],
       });
 
-      console.log("Inside useHistory Mutation");
       const previous = queryClient.getQueryData<PublicRandomLink[]>([
         "get-history",
         activeLink?.id,
@@ -95,8 +71,6 @@ const Floater: React.FC<FloaterProps> = ({
         "activeLink"
       );
       if (latestActiveLink) {
-        console.log("Inside useHistory Mutation ", latestActiveLink);
-
         queryClient.setQueryData<PublicRandomLink[]>(
           ["get-history", activeLink?.id],
           (old) => {
@@ -140,287 +114,159 @@ const Floater: React.FC<FloaterProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    const messageHandler = async (message: any) => {
-      console.log("Received message:", message);
-
-      switch (message.type) {
-        case "MARK_AS_VISITED": {
-          const linkId = message?.data?.linkId as string;
-          console.log("inside markAsVisited floater:", linkId);
-
-          addToHistory.mutate(undefined, {
-            onSuccess: () => {
-              console.log("✅ Successfully added to history:", linkId);
-            },
-            onError: (error: any) => {
-              console.error("❌ Error adding to history:", error);
-            },
-          });
-          break;
-        }
-      }
-    };
-
-    const listener = (message: any) => {
-      console.log("_________Inside Message Handler Floater__________");
-      messageHandler(message);
-      // no need for return true unless using sendResponse
-    };
-
-    browser.runtime.onMessage.addListener(listener);
-
-    return () => {
-      browser.runtime.onMessage.removeListener(listener);
-    };
-  }, [addToHistory, activeLink]);
-
-  const handleSidePanelOpen = async (activeTab: string) => {
-    const extensionTabId = await browser.storage.local.get("extensionTabId");
-    console.log("Opening side panel for tab:", extensionTabId);
-    const currentTabId = await browser.runtime.sendMessage({
-      type: "GET_CURRENT_TAB_ID",
-    });
-    const isExtensionTab =
-      extensionTabId?.extensionTabId === currentTabId?.tabId;
-    console.log({ isExtensionTab });
-    await browser.storage.local.set({
-      activeSidePanelTab: activeTab,
-    });
-    await browser.runtime
-      .sendMessage({
-        type: "OPEN_SIDE_PANEL",
-      })
-      .catch(console.error);
-  };
-
-  const options = [
-    {
-      handleClick: async () => {
-        toggleLike(!liked);
-      },
-      name: "Like",
-      icon: HeartRounded,
-      disabled: isLikePending,
-
-      fill: liked ? "black" : "none",
-    },
-    {
-      handleClick: async () => {
-        await handleSidePanelOpen("comments");
-      },
-      disabled: false,
-
-      name: "Comment",
-      icon: AnnotationDots,
-      fill: "none",
-    },
-    {
-      handleClick: async () => {
-        await handleSidePanelOpen("ask");
-      },
-      name: "Ask AI",
-      icon: MagicWand01,
-      fill: "none",
-      disabled: false,
-    },
-    {
-      handleClick: async () => {
-        toggleBookmark(!bookmarkData?.bookmarked);
-      },
-      name: "Save",
-      icon: Bookmark,
-      disabled: isBookmarkPending,
-      fill: bookmarkData?.bookmarked ? "black" : "none",
-    },
-    // {name:"Share", icon: <Share/>},
-  ];
-  const [inRabbitHole, setIsInRabbitHole] = useState(false);
-
-  const [isOpen, setIsOpen] = useState(false);
-
-  const containerVariants = {
-    open: {
-      height: 200,
-      transition: {
-        when: "beforeChildren",
-        staggerChildren: 0.08,
-        duration: 0.3,
-      },
-    },
-    closed: {
-      height: 0,
-      transition: {
-        when: "afterChildren",
-        staggerChildren: 0.05,
-        staggerDirection: -1,
-        duration: 0.2,
-      },
-    },
-  };
-  const itemVariants = {
-    open: { opacity: 1, y: 0, scale: 1 },
-    closed: { opacity: 0, y: 10, scale: 0.95 },
-  };
-
   return (
     <>
       {" "}
-      <div className={cn("fixed top-32 flex flex-col items-end right-0 ")}>
-        <motion.div className="w-fit gap-x-2 flex items-center justify-center">
-          <AnimatePresence>
-            {inRabbitHole && (
-              <motion.div
-                initial={{ opacity: 0, x: "100%" }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: "100%" }}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
-                className={
-                  "bg-indigo-700 text-white h-12 w-fit px-6  rounded-full flex items-center justify-center "
-                }
-                // onClick={() => {
-                //   setIsInRabbitHole(true);
-                // }}
-              >
-                <button
-                  onClick={() => setIsInRabbitHole(false)}
-                  className="flex items-center justify-center mr-2"
-                >
-                  <X className="stroke-white size-8" />
-                </button>
-                <img
-                  src={spiral} // force reload by changing URL
-                  alt="Animated"
-                  className="size-8  animate-spin  object-cover"
-                />{" "}
-                <div className="flex flex-col ml-3 items-start">
-                  <span className="tracking-tight text-xs font-medium">
-                    In Rabbit Hole:
-                  </span>
-                  <span className="font-semibold tracking-tight">
-                    {activeLink?.domain}
-                  </span>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          {/* <div
-            className={
-              " h-12 w-fit py-1 pl-1 rounded-l-full flex items-center justify-center"
-            }
-          > */}
-          <div
-            id="discover-count"
-            className="bg-purple-500 w-full rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center "
-          >
-            <span className="text-neutral-200 text-sm font-semibold mr-1">
-              Discover Count:
-            </span>
-            <span className="font-semibold text-sm tracking-tight text-white">
-              {count}
-            </span>
-          </div>
-          {/* </div> */}
-        </motion.div>
-        <motion.div
-          id="source"
-          className={
-            "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[65%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
-          }
-          // className="bg-neutral-50 border border-neutral-200  mb-4 size-10 font-medium flex items-center justify-center rounded-l-full text-neutral-900"
-        >
-          <span className="text-neutral-500 text-sm px-4 font-semibold ">
-            Source: "{activeLink?.domain}" from betterstacks
-          </span>
-          <AnimatePresence initial={false}>
-            {!inRabbitHole && (
-              <motion.button
-                initial={{ opacity: 1 }}
-                animate={{ opacity: 1 }}
-                exit={{
-                  opacity: 0,
-                  width: 0,
-                  // margin: 0,
-                  padding: 0,
-                  transition: { duration: 0.3, ease: "easeInOut" },
-                }}
-                className=" size-[10rem] -mr-4 overflow-hidden relative"
-                onClick={() => {
-                  setIsInRabbitHole(true);
-                }}
-              >
-                <img
-                  src={rabbit} // force reload by changing URL
-                  alt="Animated"
-                  className="  object-cover"
-                />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </div>
-      <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              className=" flex flex-col pt-2 items-center "
-              initial="closed"
-              animate="open"
-              exit="closed"
-              variants={containerVariants}
-            >
-              {options.map((option, index) => (
-                <motion.button
-                  key={index}
-                  variants={itemVariants}
-                  onClick={option.handleClick}
-                  disabled={option?.disabled}
-                  className="p-2 size-12 rounded-full flex items-center justify-center relative group "
-                >
-                  {/* Tooltip */}
-                  <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
-                    {option.name}
-                  </div>
-
-                  {/* Badge on first item */}
-                  {index === 0 && (
-                    <div className="p-1 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 aspect-square size-6 bg-white">
-                      <span className="text-xs font-semibold">
-                        {Number(likeCount)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Icon */}
-                  <option.icon
-                    style={{
-                      fill: option.fill || "none",
-                      stroke:
-                        option?.fill && option.fill === "black"
-                          ? "black"
-                          : "#404040",
-                      strokeWidth: 1.4,
-                    }}
-                    className="size-6"
-                  />
-                </motion.button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Toggle Button */}
-        <motion.button
-          onClick={() => setIsOpen((prev) => !prev)}
-          className="size-12 rounded-full flex items-center justify-center"
-          animate={{ rotate: isOpen ? 45 : 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Plus className="size-6" />
-        </motion.button>
-      </div>
+      <ToolbarApp activeLink={activeLink} addToHistory={addToHistory} />
     </>
   );
 };
 
 export default Floater;
+// <div className="fixed rounded-full bottom-20 right-4 flex flex-col items-center border border-neutral-200 bg-neutral-100 ">
+//   <AnimatePresence>
+//     {isOpen && (
+//       <motion.div
+//         className=" flex flex-col pt-2 items-center "
+//         initial="closed"
+//         animate="open"
+//         exit="closed"
+//         variants={containerVariants}
+//       >
+//         {options.map((option, index) => (
+//           <motion.button
+//             key={index}
+//             variants={itemVariants}
+//             onClick={option.handleClick}
+//             disabled={option?.disabled}
+//             className="p-2 size-12 rounded-full flex items-center justify-center relative group "
+//           >
+//             {/* Tooltip */}
+//             <div className="group-hover:opacity-100 absolute -translate-x-20 opacity-0 bg-neutral-900 border-neutral-700 text-neutral-100 text-xs transition-all duration-75 font-medium px-2 py-1 rounded-lg">
+//               {option.name}
+//             </div>
+
+//             {/* Badge on first item */}
+//             {index === 0 && (
+//               <div className="p-1 rounded-full border border-neutral-200 absolute -top-2 flex items-center justify-center -right-2 aspect-square size-6 bg-white">
+//                 <span className="text-xs font-semibold">
+//                   {Number(likeCount)}
+//                 </span>
+//               </div>
+//             )}
+
+//             {/* Icon */}
+//             <option.icon
+//               style={{
+//                 fill: option.fill || "none",
+//                 stroke:
+//                   option?.fill && option.fill === "black"
+//                     ? "black"
+//                     : "#404040",
+//                 strokeWidth: 1.4,
+//               }}
+//               className="size-6"
+//             />
+//           </motion.button>
+//         ))}
+//       </motion.div>
+//     )}
+//   </AnimatePresence>
+
+//   {/* Toggle Button */}
+//   <motion.button
+//     onClick={() => setIsOpen((prev) => !prev)}
+//     className="size-12 rounded-full flex items-center justify-center"
+//     animate={{ rotate: isOpen ? 45 : 0 }}
+//     transition={{ duration: 0.5 }}
+//   >
+//     <Plus className="size-6" />
+//   </motion.button>
+// </div>
+
+// <div className={cn("fixed top-32 flex flex-col items-end right-0 ")}>
+//   <motion.div className="w-fit gap-x-2 flex items-center justify-center">
+//     <AnimatePresence>
+//       {inRabbitHole && (
+//         <motion.div
+//           initial={{ opacity: 0, x: "100%" }}
+//           animate={{ opacity: 1, x: 0 }}
+//           exit={{ opacity: 0, x: "100%" }}
+//           transition={{ duration: 0.3, ease: "easeInOut" }}
+//           className={
+//             "bg-indigo-700 text-white h-12 w-fit px-6  rounded-full flex items-center justify-center "
+//           }
+
+//         >
+//           <button
+//             onClick={() => setIsInRabbitHole(false)}
+//             className="flex items-center justify-center mr-2"
+//           >
+//             <X className="stroke-white size-8" />
+//           </button>
+//           <img
+//             src={spiral} // force reload by changing URL
+//             alt="Animated"
+//             className="size-8  animate-spin  object-cover"
+//           />{" "}
+//           <div className="flex flex-col ml-3 items-start">
+//             <span className="tracking-tight text-xs font-medium">
+//               In Rabbit Hole:
+//             </span>
+//             <span className="font-semibold tracking-tight">
+//               {activeLink?.domain}
+//             </span>
+//           </div>
+//         </motion.div>
+//       )}
+//     </AnimatePresence>
+
+//     <div
+//       id="discover-count"
+//       className="bg-purple-500 w-full rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center "
+//     >
+//       <span className="text-neutral-200 text-sm font-semibold mr-1">
+//         Discover Count:
+//       </span>
+//       <span className="font-semibold text-sm tracking-tight text-white">
+//         {count}
+//       </span>
+//     </div>
+//     {/* </div> */}
+//   </motion.div>
+//   <motion.div
+//     id="source"
+//     className={
+//       "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[65%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
+//     }
+//   >
+//     <span className="text-neutral-500 text-sm px-4 font-semibold ">
+//       Source: "{activeLink?.domain}" from betterstacks
+//     </span>
+//     <AnimatePresence initial={false}>
+//       {!inRabbitHole && (
+//         <motion.button
+//           initial={{ opacity: 1 }}
+//           animate={{ opacity: 1 }}
+//           exit={{
+//             opacity: 0,
+//             width: 0,
+//             // margin: 0,
+//             padding: 0,
+//             transition: { duration: 0.3, ease: "easeInOut" },
+//           }}
+//           className=" size-[10rem] -mr-4 overflow-hidden relative"
+//           onClick={() => {
+//             setIsInRabbitHole(true);
+//           }}
+//         >
+//           <img
+//             src={rabbit} // force reload by changing URL
+//             alt="Animated"
+//             className="  object-cover"
+//           />
+//         </motion.button>
+//       )}
+//     </AnimatePresence>
+//   </motion.div>
+// </div>

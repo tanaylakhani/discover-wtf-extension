@@ -69,7 +69,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const restricted = isRestrictedUrl(url);
       setIsRestrictedPage(restricted);
 
-      console.log({ url, gqlToken, restricted });
       // Set auth state
       if (!gqlToken) {
         setAuthState("unauthenticated");
@@ -78,7 +77,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       setIsInitialized(true);
     } catch (error) {
-      console.error("Error checking auth/URL:", error);
       setAuthState("unauthenticated");
       setIsInitialized(true);
     }
@@ -130,69 +128,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     );
   };
 
-  // Initialize auth state on mount
-  // useEffect(() => {
-  //   initializeAuth();
-  // }, []);
-
-  // Listen for storage changes (auth u  pdates from other parts of extension)
-  // useEffect(() => {
-  //   const handleStorageChange = (changes: any, namespace: string) => {
-  //     if (namespace === "local") {
-  //       if (changes.authToken) {
-  //         if (changes.authToken.newValue) {
-  //           // Token added/updated
-  //           refreshAuth();
-  //         } else {
-  //           // Token removed
-  //           setAuthState((prev) => ({
-  //             ...prev,
-  //             user: null,
-  //             token: null,
-  //             isAuthenticated: false,
-  //             isLoading: false,
-  //           }));
-  //         }
-  //       }
-  //     }
-  //   };
-
-  //   browser.storage.onChanged.addListener(handleStorageChange);
-  //   return () => browser.storage.onChanged.removeListener(handleStorageChange);
-  // }, []);
-
-  // const initializeAuth = async () => {
-  //   try {
-  //     setAuthState((prev) => ({ ...prev, isLoading: true }));
-
-  //     const token = await getGqlToken();
-  //     if (token?.gqlToken) {
-  //       // const user = await getGoogleUser();
-  //       setAuthState({
-  //         user: null,
-  //         token: token.authToken,
-  //         isLoading: false,
-  //         isAuthenticated: true,
-  //       });
-  //     } else {
-  //       setAuthState({
-  //         user: null,
-  //         token: null,
-  //         isLoading: false,
-  //         isAuthenticated: false,
-  //       });
-  //     }
-  //   } catch (error) {
-  //     console.error("Failed to initialize auth:", error);
-  //     setAuthState({
-  //       user: null,
-  //       token: null,
-  //       isLoading: false,
-  //       isAuthenticated: false,
-  //     });
-  //   }
-  // };
-
   const value: AuthContextType = {
     state: authState,
     isRestrictedPage,
@@ -201,77 +136,5 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
   };
 
-  console.log({ authState });
-
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-
-// const login = async () => {
-//   try {
-//     setAuthState((prev) => ({ ...prev, isLoading: true }));
-
-//     // Trigger authentication via background script
-//     const response = await browser.runtime.sendMessage({
-//       type: "AUTHENTICATE_USER",
-//     });
-
-//     if (response?.token) {
-//       await refreshAuth();
-//     } else {
-//       throw new Error("Authentication failed");
-//     }
-//   } catch (error) {
-//     console.error("Login failed:", error);
-//     setAuthState((prev) => ({ ...prev, isLoading: false }));
-//     throw error;
-//   }
-// };
-
-// const logout = async () => {
-//   try {
-//     setAuthState((prev) => ({ ...prev, isLoading: true }));
-
-//     // Clear auth token from storage
-//     await browser.storage.local.remove("authToken");
-
-//     setAuthState({
-//       user: null,
-//       token: null,
-//       isLoading: false,
-//       isAuthenticated: false,
-//     });
-//   } catch (error) {
-//     console.error("Logout failed:", error);
-//     setAuthState((prev) => ({ ...prev, isLoading: false }));
-//   }
-// };
-
-// const refreshAuth = async () => {
-//   try {
-//     const token = await getGqlToken();
-//     if (token?.authToken) {
-//       // const user = await getGoogleUser();
-//       setAuthState({
-//         user: null,
-//         token: token.authToken,
-//         isLoading: false,
-//         isAuthenticated: true,
-//       });
-//     } else {
-//       setAuthState({
-//         user: null,
-//         token: null,
-//         isLoading: false,
-//         isAuthenticated: false,
-//       });
-//     }
-//   } catch (error) {
-//     console.error("Failed to refresh auth:", error);
-//     setAuthState({
-//       user: null,
-//       token: null,
-//       isLoading: false,
-//       isAuthenticated: false,
-//     });
-//   }
-// };

@@ -49,7 +49,6 @@ export const authStore = createStore<AuthStoreState>((set, get) => ({
       set({ currentUrl: url });
       const restricted = isRestrictedUrl(url);
       set({ isRestrictedPage: restricted });
-      console.log({ check: gqlToken });
       if (!gqlToken) {
         set({ state: "unauthenticated" });
       } else {
@@ -58,7 +57,6 @@ export const authStore = createStore<AuthStoreState>((set, get) => ({
 
       set({ isInitialized: true });
     } catch (err) {
-      console.error("Error in checkAuthAndUrl:", err);
       set({ state: "unauthenticated", isInitialized: true });
     }
   },
