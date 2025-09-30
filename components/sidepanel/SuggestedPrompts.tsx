@@ -1,13 +1,14 @@
 import { cn } from "@/lib/utils";
 import { Lightbulb } from "lucide-react";
 import { Skeleton } from "../ui/skeleton";
+import { TSendMessage } from "@/lib/types";
 
 type SuggestedPromptsProps = {
   suggestedPrompts: string[];
   isSuggestedPromptsLoading: boolean;
   userId: string | null;
   setInput: (text: string) => void;
-  sendMessage: (message: { text: string }) => void;
+  handlePromptClick: (prompt: string) => void;
 };
 
 const SuggestedPrompts = ({
@@ -15,7 +16,7 @@ const SuggestedPrompts = ({
   isSuggestedPromptsLoading,
   userId,
   setInput,
-  sendMessage,
+  handlePromptClick,
 }: SuggestedPromptsProps) => {
   return (
     <div className="mx-auto  font-inter px-4 flex w-full flex-col items-center justify-end mb-6 pt-10">
@@ -40,11 +41,7 @@ const SuggestedPrompts = ({
               : suggestedPrompts.map((prompt, i) => (
                   <div
                     key={i}
-                    onClick={() => {
-                      if (!userId) return;
-                      sendMessage({ text: prompt });
-                      setInput("");
-                    }}
+                    onClick={() => handlePromptClick(prompt)}
                     className={cn(
                       "bg-white z-[2] py-2 px-4 cursor-pointer rounded-lg border border-neutral-200 flex items-start justify-start font-medium text-sm text-neutral-800",
                       !userId && "cursor-not-allowed opacity-50"

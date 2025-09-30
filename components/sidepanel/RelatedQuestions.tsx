@@ -1,12 +1,15 @@
 import { Lightbulb } from "lucide-react";
 import { Skeleton } from "../ui/skeleton";
-import { ChatMessage } from "./AskTab";
+import { ChatMessage } from "@/lib/types";
+import { ChatStatus } from "ai";
 
 const RelatedQuestions = ({
   message,
   sendMessage,
+  status,
 }: {
   message: ChatMessage;
+  status: ChatStatus;
   sendMessage: (text: string) => void;
 }) => {
   const toolParts = message.parts.filter(
@@ -42,12 +45,13 @@ const RelatedQuestions = ({
               <div
                 key={i}
                 onClick={() => {
+                  if (status === "streaming") return;
                   sendMessage(prompt);
                 }}
-                className="w-full h-12 cursor-pointer group p-2 flex items-center justify-between border border-neutral-200/60 rounded-xl"
+                className="w-full h-12 cursor-pointer p-2 flex items-center justify-between border border-neutral-200/60 text-neutral-700 hover:text-black rounded-xl hover:bg-neutral-50 transition-all"
               >
                 <Lightbulb className="size-5 ml-2 stroke-orange-500 fill-orange-500" />
-                <span className="tracking-tight line-clamp-1 truncate flex-1 ml-2 text-sm text-neutral-700 group-hover:text-black">
+                <span className="tracking-tight line-clamp-1 truncate flex-1 ml-2 text-sm ">
                   {prompt}
                 </span>
               </div>

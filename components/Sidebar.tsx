@@ -1,13 +1,17 @@
+import { ChatMessage } from "@/lib/types";
+import URL from "@/lib/url";
 import {
   capitalizeFirstLetter,
   cn,
+  getGqlToken,
   makeCall,
   PublicRandomLink,
   TUser,
 } from "@/lib/utils";
+import { useChat } from "@ai-sdk/react";
 import { useQuery } from "@tanstack/react-query";
 import { Bookmark, HeartRounded } from "@untitled-ui/icons-react";
-import { UIMessage } from "ai";
+import { DefaultChatTransport, UIMessage } from "ai";
 import { motion } from "framer-motion";
 import {
   History,
@@ -18,6 +22,7 @@ import {
 } from "lucide-react";
 import React, { useEffect } from "react";
 import useMeasure from "react-use-measure";
+import { v4 as uuid } from "uuid";
 import AskTab from "./sidepanel/AskTab";
 import AvatarMenu from "./sidepanel/AvatarMenu";
 import HistoryTab from "./sidepanel/HistoryTab";
@@ -52,9 +57,12 @@ const Sidebar = ({
   pageData,
 }: SidebarProps) => {
   const [ref, bounds] = useMeasure();
+  const [chatId, setChatId] = useState(uuid());
+
+  const [isPrevChat, setIsPrevChat] = useState(false);
   const { data: suggestedPromptsData, isLoading: suggestedPromptsLoading } =
     useQuery({
-      queryKey: ["suggested-prompts", pageData],
+      queryKey: ["suggested-prompts", pageData, activeLink?.id],
       queryFn: async () => {
         const resp = await browser.runtime.sendMessage({
           type: "GET_SUGGESTED_PROMPTS",
@@ -79,7 +87,48 @@ const Sidebar = ({
     },
   });
   const suggestedPrompts = suggestedPromptsData || [];
-  console.log({ data });
+  const { messages, regenerate, sendMessage, status, setMessages } =
+    useChat<ChatMessage>({
+      id: chatId,
+      transport: new DefaultChatTransport({
+        api: `${URL}/api/chat`,
+        async prepareSendMessagesRequest({ messages }) {
+          if (!data?.id) {
+            throw new Error(
+              "User not loaded yet. Please wait for authentication."
+            );
+          }
+
+          const gqlToken = await getGqlToken();
+          const headers: Record<string, string> = {
+            Authorization: `Bearer ${gqlToken}`,
+          };
+          return {
+            body: {
+              messages,
+              ctx: pageData?.content,
+              chatId: chatId,
+              userId: data?.id, // Remove optional chaining since we checked above
+              linkId: activeLink?.id,
+            },
+            headers,
+          };
+        },
+      }),
+    });
+
+  useEffect(() => {
+    setMessages([]);
+  }, [activeLink?.id]);
+  const regenerateMessage = async (messageId?: string) => {
+    await regenerate({ messageId });
+  };
+
+  const handleHistoryClick = (chatId: string) => {
+    setIsPrevChat(true);
+    setChatId(chatId);
+  };
+
   const tabs = {
     history: (
       <HistoryTab
@@ -104,6 +153,16 @@ const Sidebar = ({
         activeTab={activeTab}
         pageData={pageData as PageData}
         suggestedPrompts={suggestedPrompts}
+        messages={messages}
+        setMessages={setMessages}
+        chatId={chatId}
+        setChatId={setChatId}
+        handleHistoryClick={handleHistoryClick}
+        isPrevChat={isPrevChat}
+        setIsPrevChat={setIsPrevChat}
+        regenerateMessage={regenerateMessage}
+        status={status}
+        sendMessage={sendMessage}
         isSuggestedPromptsLoading={suggestedPromptsLoading}
       />
     ),

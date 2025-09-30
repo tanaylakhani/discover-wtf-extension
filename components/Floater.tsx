@@ -5,6 +5,8 @@ import React, { useState } from "react";
 import ToolbarApp from "./Toolbar";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+import rabbitHoleIcon from "/public/images/rabbithole.gif";
+import spiralIcon from "/public/images/spiral.png";
 
 type FloaterProps = {
   activeLink: PublicRandomLink | null;
@@ -119,8 +121,12 @@ const Floater: React.FC<FloaterProps> = ({
 
   return (
     <>
-      <div className={cn("fixed top-32 flex flex-col items-end right-0 ")}>
-        <motion.div className="w-fit gap-x-2 flex items-center justify-center">
+      <div
+        className={cn(
+          "fixed font-inter top-32 flex flex-col items-end right-0 "
+        )}
+      >
+        <motion.div className="w-fit  flex items-center justify-center">
           <AnimatePresence>
             {inRabbitHole && (
               <motion.div
@@ -129,7 +135,7 @@ const Floater: React.FC<FloaterProps> = ({
                 exit={{ opacity: 0, x: "100%" }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
                 className={
-                  "bg-indigo-700 text-white h-12 w-fit px-6  rounded-full flex items-center justify-center "
+                  "bg-indigo-700 font-inter text-white h-12 w-fit px-6  rounded-full flex items-center justify-center "
                 }
               >
                 <button
@@ -139,11 +145,11 @@ const Floater: React.FC<FloaterProps> = ({
                   <X className="stroke-white size-8" />
                 </button>
                 <img
-                  src={browser.runtime.getURL("/images/spiral.png")} // force reload by changing URL
+                  src={spiralIcon} // force reload by changing URL
                   alt="Animated"
-                  className="size-8  animate-spin  object-cover"
+                  className="size-8 animate-spin object-cover"
                 />{" "}
-                <div className="flex flex-col ml-3 items-start">
+                <div className="flex flex-col mx-3 items-start">
                   <span className="tracking-tight text-xs font-medium">
                     In Rabbit Hole:
                   </span>
@@ -157,14 +163,13 @@ const Floater: React.FC<FloaterProps> = ({
 
           <div
             id="discover-count"
-            className="bg-purple-500 w-full rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center "
+            className={cn(
+              "bg-orange-500 w-full font-semibold rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center ",
+              inRabbitHole && "ml-2"
+            )}
           >
-            <span className="text-neutral-200 text-sm font-semibold mr-1">
-              Discover Count:
-            </span>
-            <span className="font-semibold text-sm tracking-tight text-white">
-              {count}
-            </span>
+            <span className="text-white text-sm  mr-1">Discover Count:</span>
+            <span className=" text-sm tracking-tight text-white">{count}</span>
           </div>
           {/* </div> */}
         </motion.div>
@@ -195,7 +200,7 @@ const Floater: React.FC<FloaterProps> = ({
                 }}
               >
                 <img
-                  src={browser.runtime.getURL("/rabbit-hole-icon.gif")} // force reload by changing URL
+                  src={rabbitHoleIcon} // force reload by changing URL
                   alt="Animated"
                   className="  object-cover"
                 />

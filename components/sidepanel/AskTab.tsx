@@ -1,19 +1,11 @@
 "use client";
 
-import URL from "@/lib/url";
-import { cn, getGqlToken, PublicRandomLink, TUser } from "@/lib/utils";
-import { useChat } from "@ai-sdk/react";
+import { ChatMessage } from "@/lib/types";
+import BASE_URL from "@/lib/url";
+import { cn, getGqlToken, PublicRandomLink } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { DefaultChatTransport, InferUITool, Tool, UIMessage } from "ai";
-import {
-  Copy,
-  History,
-  Lightbulb,
-  Loader,
-  Loader2,
-  Plus,
-  RefreshCcw,
-} from "lucide-react";
+import { ChatStatus } from "ai";
+import { Copy, History, Loader, Loader2, Plus, RefreshCcw } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import useMeasure from "react-use-measure";
 import { v4 as uuid } from "uuid";
@@ -27,9 +19,9 @@ import { Response } from "../ai-elements/response";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Skeleton } from "../ui/skeleton";
+import AskChatBox from "./AskChatBox";
 import LinkCard from "./LinkCard";
 import RelatedQuestions from "./RelatedQuestions";
-import AskChatBox from "./AskChatBox";
 import SuggestedPrompts from "./SuggestedPrompts";
 
 type AskTabProps = {
@@ -40,6 +32,16 @@ type AskTabProps = {
   pageData: PageData;
   suggestedPrompts: string[];
   isSuggestedPromptsLoading: boolean;
+  messages: ChatMessage[];
+  setMessages: (messages: ChatMessage[]) => void;
+  chatId: string;
+  setChatId: (chatId: string) => void;
+  handleHistoryClick: (chatId: string) => void;
+  isPrevChat: boolean;
+  setIsPrevChat: (isPrevChat: boolean) => void;
+  regenerateMessage: (messageId?: string) => void;
+  status: ChatStatus;
+  sendMessage: ({ text }: { text: string }) => void;
 };
 
 type TChat = {
@@ -59,105 +61,41 @@ type TMessage = {
   role: string;
 };
 
-export type ChatTools = {
-  getSimilarLinks: InferUITool<
-    Tool<{
-      name: string;
-    }>
-  >;
-  bookmarkLink: InferUITool<
-    Tool<{
-      name: string;
-    }>
-  >;
-};
-
-export type CustomUIDataTypes = {
-  getSimilarLinks: {
-    text?: string;
-    links?: PublicRandomLink[];
-    status: "fetching" | "found-n-items" | "links-loading" | "complete";
-  };
-  bookmarkLink: {
-    text?: string;
-    bookmarked?: boolean;
-    status: "fetching" | "complete";
-  };
-  getRelatedQuestions: {
-    status: "generating" | "complete" | "error";
-    prompts?: string[];
-    error?: string;
-  };
-};
-
-export type ChatMessage = UIMessage<never, CustomUIDataTypes, ChatTools>;
-export type CustomMessage = UIMessage<
-  never,
-  {
-    searchForRelatedLinks: {
-      links: PublicRandomLink[];
-    };
-  }
->;
+// export type CustomMessage = UIMessage<
+//   never,
+//   {
+//     searchForRelatedLinks: {
+//       links: PublicRandomLink[];
+//     };
+//   }
+// >;
 
 const AskTab = ({
   height,
   suggestedPrompts,
   isSuggestedPromptsLoading,
-  pageData,
   userId,
   activeLink,
+  messages,
+  setMessages,
+  chatId,
+  setChatId,
+  isPrevChat,
+  handleHistoryClick,
+  regenerateMessage,
+  setIsPrevChat,
+  sendMessage,
+  status,
 }: AskTabProps) => {
   const [ref, bounds] = useMeasure();
   const [input, setInput] = useState("");
   const [openHistory, setOpenHistory] = useState(false);
-  const [chatId, setChatId] = useState(uuid());
-  const [isPrevChat, setIsPrevChat] = useState(false);
+
   const [commentOptionsBar, barBounds] = useMeasure();
   const scrollAreaHeight = `calc(100vh - ${
     height + bounds?.height + barBounds?.height
   }px)`;
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const {
-    messages,
-    regenerate,
-    sendMessage,
-    status,
-    setMessages,
-    addToolResult,
-  } = useChat<ChatMessage>({
-    id: chatId,
-    transport: new DefaultChatTransport({
-      api: `${URL}/api/chat`,
-      async prepareSendMessagesRequest({ messages }) {
-        if (!userId) {
-          throw new Error(
-            "User not loaded yet. Please wait for authentication."
-          );
-        }
-
-        const gqlToken = await getGqlToken();
-        const headers: Record<string, string> = {
-          Authorization: `Bearer ${gqlToken}`,
-        };
-        return {
-          body: {
-            messages,
-            ctx: pageData?.content,
-            chatId: chatId,
-            userId: userId, // Remove optional chaining since we checked above
-            linkId: activeLink?.id,
-          },
-          headers,
-        };
-      },
-    }),
-  });
-  const handleHistoryClick = (chatId: string) => {
-    setIsPrevChat(true);
-    setChatId(chatId);
-  };
 
   const { data: history, isLoading: isHistoryLoading } = useQuery({
     enabled: openHistory,
@@ -172,7 +110,7 @@ const AskTab = ({
       };
       const urlSearchParams = new URLSearchParams(params);
       const response = await fetch(
-        `${URL}/api/chat/history?${urlSearchParams.toString()}`,
+        `${BASE_URL}/api/chat/history?${urlSearchParams.toString()}`,
         { headers }
       );
 
@@ -184,7 +122,7 @@ const AskTab = ({
       return data?.chats as TChat[];
     },
   });
-  const { data: prevChatMessages, isLoading: isLoadingPrevChat } = useQuery({
+  const { isLoading: isLoadingPrevChat } = useQuery({
     enabled: isPrevChat && !!chatId,
     queryKey: ["get-previous-chat", activeLink?.id, chatId, isPrevChat],
     queryFn: async () => {
@@ -198,7 +136,7 @@ const AskTab = ({
       };
       const urlSearchParams = new URLSearchParams(params);
       const response = await fetch(
-        `${URL}/api/chat/history?${urlSearchParams.toString()}`,
+        `${BASE_URL}/api/chat/history?${urlSearchParams.toString()}`,
         { headers }
       );
 
@@ -250,6 +188,12 @@ const AskTab = ({
     }
   }, [status, messages.length]);
   const isLoading = status === "streaming";
+
+  const handlePromptClick = (prompt: string) => {
+    if (status === "streaming") return;
+    sendMessage({ text: prompt });
+    setInput("");
+  };
 
   return (
     <div
@@ -320,7 +264,7 @@ const AskTab = ({
           ) : messages.length === 0 ? (
             <SuggestedPrompts
               isSuggestedPromptsLoading={isSuggestedPromptsLoading}
-              sendMessage={sendMessage}
+              handlePromptClick={handlePromptClick}
               userId={userId}
               setInput={setInput}
               suggestedPrompts={suggestedPrompts}
@@ -346,10 +290,8 @@ const AskTab = ({
                       switch (part.type) {
                         case "text":
                           return (
-                            <>
-                              <Response key={`${message.id}-${i}`}>
-                                {part.text}
-                              </Response>
+                            <React.Fragment key={`${message.id}-${i}`}>
+                              <Response>{part.text}</Response>
                               {message.role === "assistant" && (
                                 <div className="flex mt-1 items-center justify-end space-x-1">
                                   <Button
@@ -363,9 +305,7 @@ const AskTab = ({
                                   </Button>
                                   <Button
                                     onClick={async () =>
-                                      await regenerate({
-                                        messageId: message?.id,
-                                      })
+                                      regenerateMessage(message?.id)
                                     }
                                     size={"icon"}
                                     variant={"ghost"}
@@ -374,7 +314,7 @@ const AskTab = ({
                                   </Button>
                                 </div>
                               )}
-                            </>
+                            </React.Fragment>
                           );
                       }
                     })}
@@ -436,6 +376,7 @@ const AskTab = ({
                       }
                     })()}
                     <RelatedQuestions
+                      status={status}
                       message={message}
                       sendMessage={(text: string) => sendMessage({ text })}
                     />
