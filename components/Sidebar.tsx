@@ -1,26 +1,28 @@
 import {
   capitalizeFirstLetter,
   cn,
+  makeCall,
   PublicRandomLink,
   TUser,
 } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { Bookmark, HeartRounded } from "@untitled-ui/icons-react";
 import { UIMessage } from "ai";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   History,
   Info,
   MessageCircle,
-  PanelRightClose,
+  PanelRight,
   Sparkles,
 } from "lucide-react";
-import React from "react";
+import React, { useEffect } from "react";
 import useMeasure from "react-use-measure";
 import AskTab from "./sidepanel/AskTab";
+import AvatarMenu from "./sidepanel/AvatarMenu";
 import HistoryTab from "./sidepanel/HistoryTab";
 import InfoTab from "./sidepanel/InfoTab";
 import ThreadsTab from "./sidepanel/ThreadsTab";
-import { useEffect } from "react";
 import { PageData } from "./Toolbar";
 
 export const tabsIcon = {
@@ -71,12 +73,13 @@ const Sidebar = ({
   const { data, isLoading } = useQuery({
     queryKey: ["get-user"],
     queryFn: async () => {
-      const resp = await browser.runtime.sendMessage({ type: "GET_USER" });
+      const resp = await makeCall("/user", {}, 10000);
+      console.log({ data: resp?.data });
       return resp?.data as TUser;
     },
   });
   const suggestedPrompts = suggestedPromptsData || [];
-
+  console.log({ data });
   const tabs = {
     history: (
       <HistoryTab
@@ -96,7 +99,7 @@ const Sidebar = ({
     ask: (
       <AskTab
         height={bounds?.height}
-        user={data as TUser}
+        userId={data?.id as string}
         activeLink={activeLink}
         activeTab={activeTab}
         pageData={pageData as PageData}
@@ -131,6 +134,7 @@ const Sidebar = ({
       browser.storage.onChanged.removeListener(listener);
     };
   }, []);
+  const options = [{ icon: HeartRounded }, { icon: Bookmark }];
 
   // <AnimatePresence>
   //   {isOpen && (
@@ -147,23 +151,39 @@ const Sidebar = ({
   //     >
   return (
     <>
-      <div ref={ref} className="w-full  flex flex-col">
+      <div ref={ref} className="w-full  flex  flex-col">
         <div className="w-full flex px-6 pt-3 py-1 items-center justify-between">
           <div
             onClick={() => onClose()}
             className="group group:bg-neutral-100 rounded-lg flex items-center justify-center"
           >
-            <PanelRightClose className="size-5 group-hover:stroke-black stroke-neutral-700" />
+            <PanelRight className="size-5 group-hover:stroke-black stroke-neutral-700" />
           </div>
-          {isLoading ? (
-            <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
-          ) : (
-            <img
-              src={data?.profile_image_url!}
-              alt="Profile"
-              className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
-            />
-          )}
+          <div className="flex items-center justify-center">
+            {/* <div className="flex items-center gap-x-4 mr-4 justify-center">
+              {options.map((option, i) => {
+                return (
+                  <>
+                    {option.icon({
+                      className: "size-5 stroke-neutral-700",
+                    })}
+                  </>
+                );
+              })}
+              <div className="border-r border-neutral-200 h-6" />
+            </div> */}
+            <AvatarMenu>
+              {isLoading ? (
+                <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
+              ) : (
+                <img
+                  src={data?.profile_image_url!}
+                  alt="Profile"
+                  className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
+                />
+              )}
+            </AvatarMenu>
+          </div>
         </div>
         <div className="px-2 w-full flex flex-row mt-2 items-center justify-center  border-b border-neutral-200 ">
           {Object.keys(tabs).map((tab) => {

@@ -5,7 +5,6 @@ import { PublicRandomLink } from "@/lib/utils";
 import { Toolbar } from "@betterstacks/toolbar-sdk";
 import { UseMutationResult } from "@tanstack/react-query";
 import { HeartRounded } from "@untitled-ui/icons-react";
-import { UIMessage } from "ai";
 import {
   Bookmark,
   Brain,
@@ -13,7 +12,7 @@ import {
   SidebarIcon,
   SparklesIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 type ToolbarProps = {
   activeLink?: PublicRandomLink | null;

@@ -4,9 +4,17 @@ import URL from "@/lib/url";
 import { cn, getGqlToken, PublicRandomLink, TUser } from "@/lib/utils";
 import { useChat } from "@ai-sdk/react";
 import { useQuery } from "@tanstack/react-query";
-import { DefaultChatTransport, UIMessage } from "ai";
-import { Dot, History, Lightbulb, Loader, Plus } from "lucide-react";
-import { useRef } from "react";
+import { DefaultChatTransport, InferUITool, Tool, UIMessage } from "ai";
+import {
+  Copy,
+  History,
+  Lightbulb,
+  Loader,
+  Loader2,
+  Plus,
+  RefreshCcw,
+} from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
 import useMeasure from "react-use-measure";
 import { v4 as uuid } from "uuid";
 import {
@@ -15,25 +23,23 @@ import {
   ConversationScrollButton,
 } from "../ai-elements/conversation";
 import { Message, MessageContent } from "../ai-elements/message";
-import {
-  PromptInput,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputToolbar,
-} from "../ai-elements/prompt-input";
 import { Response } from "../ai-elements/response";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Skeleton } from "../ui/skeleton";
+import LinkCard from "./LinkCard";
+import RelatedQuestions from "./RelatedQuestions";
+import AskChatBox from "./AskChatBox";
+import SuggestedPrompts from "./SuggestedPrompts";
 
 type AskTabProps = {
   activeTab: string;
   activeLink: PublicRandomLink | null;
-  user: TUser;
+  userId: string;
   height: number;
   pageData: PageData;
   suggestedPrompts: string[];
-  isSuggestedPromptsLoading?: boolean;
+  isSuggestedPromptsLoading: boolean;
 };
 
 type TChat = {
@@ -53,12 +59,53 @@ type TMessage = {
   role: string;
 };
 
+export type ChatTools = {
+  getSimilarLinks: InferUITool<
+    Tool<{
+      name: string;
+    }>
+  >;
+  bookmarkLink: InferUITool<
+    Tool<{
+      name: string;
+    }>
+  >;
+};
+
+export type CustomUIDataTypes = {
+  getSimilarLinks: {
+    text?: string;
+    links?: PublicRandomLink[];
+    status: "fetching" | "found-n-items" | "links-loading" | "complete";
+  };
+  bookmarkLink: {
+    text?: string;
+    bookmarked?: boolean;
+    status: "fetching" | "complete";
+  };
+  getRelatedQuestions: {
+    status: "generating" | "complete" | "error";
+    prompts?: string[];
+    error?: string;
+  };
+};
+
+export type ChatMessage = UIMessage<never, CustomUIDataTypes, ChatTools>;
+export type CustomMessage = UIMessage<
+  never,
+  {
+    searchForRelatedLinks: {
+      links: PublicRandomLink[];
+    };
+  }
+>;
+
 const AskTab = ({
   height,
   suggestedPrompts,
   isSuggestedPromptsLoading,
   pageData,
-  user,
+  userId,
   activeLink,
 }: AskTabProps) => {
   const [ref, bounds] = useMeasure();
@@ -72,11 +119,24 @@ const AskTab = ({
   }px)`;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, sendMessage, status, setMessages } = useChat({
+  const {
+    messages,
+    regenerate,
+    sendMessage,
+    status,
+    setMessages,
+    addToolResult,
+  } = useChat<ChatMessage>({
     id: chatId,
     transport: new DefaultChatTransport({
       api: `${URL}/api/chat`,
       async prepareSendMessagesRequest({ messages }) {
+        if (!userId) {
+          throw new Error(
+            "User not loaded yet. Please wait for authentication."
+          );
+        }
+
         const gqlToken = await getGqlToken();
         const headers: Record<string, string> = {
           Authorization: `Bearer ${gqlToken}`,
@@ -86,7 +146,7 @@ const AskTab = ({
             messages,
             ctx: pageData?.content,
             chatId: chatId,
-            userId: user?.id,
+            userId: userId, // Remove optional chaining since we checked above
             linkId: activeLink?.id,
           },
           headers,
@@ -155,10 +215,7 @@ const AskTab = ({
             id: message.id,
             parts: message?.content,
             role: message?.role,
-            metadata: {
-              createdAt: message?.createdAt,
-            },
-          } as UIMessage)
+          } as ChatMessage)
       );
       setMessages(formattedHistoryMessages);
       return chat;
@@ -166,6 +223,12 @@ const AskTab = ({
   });
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!userId) {
+      console.warn("Cannot send message: User not loaded yet");
+      return;
+    }
+
     sendMessage({ text: input });
     setInput("");
   };
@@ -240,9 +303,6 @@ const AskTab = ({
                       <span className="text-sm group-hover:text-neutral-900 text-neutral-700 tracking-tight line-clamp-1 ">
                         {chat?.title}
                       </span>
-                      {/* {chat?.id === chatId && (
-                        <Dot className="size-6 leading-none inline" />
-                      )} */}
                     </div>
                   );
                 })
@@ -258,41 +318,13 @@ const AskTab = ({
               <Loader className="animate-spin size-6 mt-6" />
             </div>
           ) : messages.length === 0 ? (
-            <div className="mx-auto  font-inter px-4 flex w-full flex-col items-center justify-end mb-6 pt-10">
-              <div className="flex items-center justify-start w-full">
-                <div className="flex-1 flex flex-col ml-4">
-                  <span className="text-sm text-neutral-600 font-medium leading-tight mb-2">
-                    Discover.wtf
-                  </span>
-                  <span className="font-medium text-neutral-900 text-sm leading-tight">
-                    Welcome to Discover.wtf! Here are some suggestions to get
-                    started.
-                  </span>
-                  <div className="mt-4 grid sm:grid-cols-2 grid-cols-1 gap-3 w-full">
-                    {isSuggestedPromptsLoading
-                      ? [...Array(4)].map((_, i) => (
-                          <Skeleton
-                            key={i}
-                            className="w-full bg-neutral-200 rounded-xl h-14 "
-                          />
-                        ))
-                      : suggestedPrompts.map((prompt, i) => (
-                          <div
-                            key={i}
-                            onClick={() => {
-                              sendMessage({ text: prompt });
-                              setInput("");
-                            }}
-                            className="bg-white z-[2] py-2 px-4 cursor-pointer rounded-lg border border-neutral-200 flex items-start justify-start font-medium text-sm text-neutral-800"
-                          >
-                            <Lightbulb className="size-5 mr-2 stroke-orange-500 fill-orange-500" />
-                            {prompt}
-                          </div>
-                        ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <SuggestedPrompts
+              isSuggestedPromptsLoading={isSuggestedPromptsLoading}
+              sendMessage={sendMessage}
+              userId={userId}
+              setInput={setInput}
+              suggestedPrompts={suggestedPrompts}
+            />
           ) : (
             <div className="flex flex-col space-y-4 py-4 max-w-full">
               {messages?.map((message) => (
@@ -301,12 +333,12 @@ const AskTab = ({
                     className={cn(
                       "rounded-xl font-inter",
                       message?.role === "user"
-                        ? "bg-neutral-100 tracking-tight font-medium text-neutral-700"
+                        ? "bg-neutral-100 tracking-tight max-w-[75%] w-fit font-medium text-neutral-700"
                         : "border-none bg-transparent"
                     )}
                   >
                     {message.role === "assistant" && (
-                      <span className="text-sm text-neutral-600 font-medium leading-tight mb-2">
+                      <span className="text-sm text-neutral-600 font-medium flex items-center justify-start  leading-tight mb-2">
                         Discover.wtf
                       </span>
                     )}
@@ -314,42 +346,120 @@ const AskTab = ({
                       switch (part.type) {
                         case "text":
                           return (
-                            <Response key={`${message.id}-${i}`}>
-                              {part.text}
-                            </Response>
+                            <>
+                              <Response key={`${message.id}-${i}`}>
+                                {part.text}
+                              </Response>
+                              {message.role === "assistant" && (
+                                <div className="flex mt-1 items-center justify-end space-x-1">
+                                  <Button
+                                    onClick={async () =>
+                                      navigator.clipboard.writeText(part.text)
+                                    }
+                                    size={"icon"}
+                                    variant={"ghost"}
+                                  >
+                                    <Copy className="size-3" />
+                                  </Button>
+                                  <Button
+                                    onClick={async () =>
+                                      await regenerate({
+                                        messageId: message?.id,
+                                      })
+                                    }
+                                    size={"icon"}
+                                    variant={"ghost"}
+                                  >
+                                    <RefreshCcw className="size-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </>
                           );
                       }
                     })}
+                    {(() => {
+                      const toolParts = message.parts.filter(
+                        (part) => part.type === "data-getSimilarLinks"
+                      );
+                      const latest = toolParts[toolParts.length - 1];
+                      if (!latest) return null;
+
+                      const { data } = latest;
+
+                      switch (data?.status) {
+                        case "fetching":
+                        case "found-n-items":
+                          return (
+                            <div className="flex items-center justify-start">
+                              <Loader2 className="size-4 text-neutral-700 animate-spin mr-1" />
+                              <span className="text-sm font-medium ">
+                                {data.text}
+                              </span>
+                            </div>
+                          );
+
+                        case "links-loading":
+                          return (
+                            <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
+                              {[...Array.from({ length: 4 })].map((_, i) => (
+                                <div
+                                  key={i}
+                                  className="flex flex-col h-[180px] shadow-md bg-white max-w-xs flex-shrink-0 w-full py-4 px-6 rounded-2xl border border-neutral-200"
+                                >
+                                  <div className="flex w-full items-center justify-center">
+                                    <Skeleton className="animate-none bg-neutral-200 rounded-full aspect-square size-10" />
+                                    <div className="ml-2 flex flex-col w-full pr-4 space-y-1">
+                                      <Skeleton className="animate-none w-1/3 bg-neutral-200 rounded-2xl h-4" />
+                                      <Skeleton className="animate-none w-full bg-neutral-200 rounded-2xl h-4" />
+                                    </div>
+                                  </div>
+                                  <Skeleton className="animate-none w-full bg-neutral-200 mt-2 rounded-2xl h-28" />
+                                </div>
+                              ))}
+                            </div>
+                          );
+
+                        case "complete":
+                          return (
+                            <div className=" relative">
+                              <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
+                                {data.links?.map((link, i) => (
+                                  <LinkCard key={i} link={link} />
+                                ))}
+                              </div>
+                            </div>
+                          );
+
+                        default:
+                          return null;
+                      }
+                    })()}
+                    <RelatedQuestions
+                      message={message}
+                      sendMessage={(text: string) => sendMessage({ text })}
+                    />
                   </MessageContent>
                 </Message>
               ))}
-
-              {/* <div ref={messagesEndRef} /> */}
             </div>
           )}
         </ConversationContent>
-        <ConversationScrollButton />
+        <ConversationScrollButton className="bg-white" />
       </Conversation>
 
       <div
         ref={ref}
         className="w-full z-10 px-2 pb-2 flex items-center justify-center"
       >
-        <PromptInput
-          className="bg-white border-neutral-300"
-          onSubmit={handleSubmit}
-        >
-          <PromptInputTextarea
-            onChange={(e) => setInput(e?.target?.value)}
-            value={input}
-          />
-          <PromptInputToolbar>
-            <PromptInputSubmit
-              status={status}
-              disabled={input.trim() === "" || isLoading}
-            />
-          </PromptInputToolbar>
-        </PromptInput>
+        <AskChatBox
+          handleSubmit={handleSubmit}
+          input={input}
+          setInput={setInput}
+          isLoading={isLoading}
+          userId={userId}
+          status={status}
+        />
       </div>
     </div>
   );
