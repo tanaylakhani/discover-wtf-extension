@@ -189,6 +189,13 @@ const AskTab = ({
 
   const handlePromptClick = (prompt: string) => {
     if (status === "streaming" || isSubmitting) return;
+
+    // Debug logging
+    console.log("Prompt clicked:", prompt);
+    console.log("User ID:", userId);
+    console.log("Chat ID:", chatId);
+    console.log("Status:", status);
+
     setIsSubmitting(true);
     sendMessage({ text: prompt });
     setInput("");

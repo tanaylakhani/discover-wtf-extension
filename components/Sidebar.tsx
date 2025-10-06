@@ -93,17 +93,28 @@ const Sidebar = ({
       new DefaultChatTransport({
         api: `${URL}/api/chat`,
         prepareSendMessagesRequest: async ({ messages }) => {
+          console.log("prepareSendMessagesRequest called with:", {
+            messagesCount: messages.length,
+            isUserLoading,
+            userId: user?.id,
+            activeLink: activeLink?.id,
+            chatId,
+          });
+
           if (isUserLoading) {
+            console.error("User still loading");
             throw new Error("User data is still loading. Please wait...");
           }
 
           if (!user?.id) {
+            console.error("No user ID");
             throw new Error(
               "User not authenticated. Please wait for authentication to complete."
             );
           }
 
           if (!activeLink?.id) {
+            console.error("No active link");
             throw new Error(
               "No active link available. Please navigate to a page first."
             );
@@ -136,17 +147,10 @@ const Sidebar = ({
     [activeLink?.id, chatId, user?.id, pageData?.content, isUserLoading]
   );
 
-  useEffect(() => {
-    setMessages([]);
-  }, [activeLink?.id]);
-
   const { messages, regenerate, sendMessage, status, setMessages } =
     useChat<ChatMessage>({
       id: chatId,
       transport: transport(),
-      onToolCall: ({ toolCall }) => {
-        console.log({ toolCall });
-      },
       onData: ({ data, type }) => {
         if (type === "data-getSimilarLinks") {
           console.log({ getSimilarLinksData: data });
@@ -162,6 +166,15 @@ const Sidebar = ({
 
   useEffect(() => {
     setMessages([]);
+  }, [activeLink?.id]);
+
+  // Reset chat state when activeLink changes to ensure fresh start
+  useEffect(() => {
+    if (activeLink?.id) {
+      const newChatId = uuid();
+      setChatId(newChatId);
+      setIsPrevChat(false);
+    }
   }, [activeLink?.id]);
 
   const regenerateMessage = async (messageId?: string) => {
