@@ -78,7 +78,7 @@ const AskTab = ({
   const [ref, bounds] = useMeasure();
   const [input, setInput] = useState("");
   const [openHistory, setOpenHistory] = useState(false);
-
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [commentOptionsBar, barBounds] = useMeasure();
   const scrollAreaHeight = `calc(100vh - ${
     height + bounds?.height + barBounds?.height
@@ -155,6 +155,7 @@ const AskTab = ({
       return;
     }
 
+    setIsSubmitting(true);
     sendMessage({ text: input });
     setInput("");
   };
@@ -177,10 +178,18 @@ const AskTab = ({
     }
   }, [status, messages.length]);
 
-  const isLoading = status === "streaming";
+  // Reset submitting state when streaming starts or when there's an error
+  useEffect(() => {
+    if (status === "streaming" || status === "error") {
+      setIsSubmitting(false);
+    }
+  }, [status]);
+
+  const isLoading = status === "streaming" || isSubmitting;
 
   const handlePromptClick = (prompt: string) => {
-    if (status === "streaming") return;
+    if (status === "streaming" || isSubmitting) return;
+    setIsSubmitting(true);
     sendMessage({ text: prompt });
     setInput("");
   };
@@ -428,7 +437,20 @@ const AskTab = ({
                 </MessageContent>
               </Message>
             ))}
-            {status === "streaming" && <div>Thinking...</div>}
+            {isSubmitting && (
+              <div className="w-full px-4 flex flex-col">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton
+                    className="h-6 w-full mt-2 rounded-xl bg-neutral-200 animate-pulse"
+                    key={i}
+                  />
+                ))}
+                <Skeleton
+                  className="h-20 w-full mt-2 rounded-xl bg-neutral-200 animate-pulse"
+                  // key={3}
+                />
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         )}
