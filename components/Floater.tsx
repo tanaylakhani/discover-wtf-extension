@@ -135,12 +135,12 @@ const Floater: React.FC<FloaterProps> = ({
                 exit={{ opacity: 0, x: "100%" }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
                 className={
-                  "bg-indigo-700 font-inter text-white h-12 w-fit px-6  rounded-full flex items-center justify-center "
+                  "bg-indigo-700 font-inter text-white h-12 w-full max-w-[240px] px-6  rounded-full flex items-center justify-center "
                 }
               >
                 <button
                   onClick={() => setIsInRabbitHole(false)}
-                  className="flex items-center justify-center mr-2"
+                  className="flex items-center justify-center mx-2"
                 >
                   <X className="stroke-white size-8" />
                 </button>

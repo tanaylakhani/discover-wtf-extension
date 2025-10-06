@@ -39,7 +39,7 @@ const getButtonContent = (loginState: LoginState) => {
   if (loginState.isWaitingForLogin) {
     return (
       <>
-        <div className="loading-spinner w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+        <LucideIcons.LoaderIcon className="size-4 animate-spin" />
         Waiting for login...
       </>
     );
@@ -58,15 +58,15 @@ const getButtonContent = (loginState: LoginState) => {
 };
 
 const getButtonClass = (loginState: LoginState) => {
-  if (loginState.isSuccess) {
-    return "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-600 hover:to-emerald-600 cursor-default";
-  }
+  // if (loginState.isSuccess) {
+  //   return "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-600 hover:to-emerald-600 cursor-default";
+  // }
 
-  if (loginState.isLoading || loginState.isWaitingForLogin) {
-    return "cursor-wait bg-gradient-to-r from-teal-600 to-cyan-600 dark:from-teal-600 dark:to-teal-700 hover:from-teal-600 hover:to-cyan-600 dark:hover:from-teal-600 dark:hover:to-teal-700";
-  }
+  // if (loginState.isLoading || loginState.isWaitingForLogin) {
+  //   return "cursor-wait bg-gradient-to-r from-teal-600 to-cyan-600 dark:from-teal-600 dark:to-teal-700 hover:from-teal-600 hover:to-cyan-600 dark:hover:from-teal-600 dark:hover:to-teal-700";
+  // }
 
-  return "bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 dark:from-teal-600 dark:to-teal-700 dark:hover:from-teal-700 dark:hover:to-teal-800 shadow-lg hover:shadow-xl";
+  return "bg-neutral-200 hover:bg-neutral-300 text-neutral-800 outline-2 outline-neutral-300 border-2 border-neutral-300 ";
 };
 const getIconComponent = (
   iconName: string
@@ -433,7 +433,7 @@ const OnboardingContent = () => {
                     // onClick={() => handleActiveStep(i)}
                     className={`w-2  transition-all duration-300 rounded-full ${
                       i === activeStep
-                        ? "bg-purple-500 h-12  "
+                        ? "bg-orange-500 h-12  "
                         : "bg-neutral-200 h-6"
                     }`}
                   ></div>
@@ -452,20 +452,38 @@ const OnboardingContent = () => {
           </div>
         </div>
       ) : (
-        <Button
-          onClick={handleLogin}
-          disabled={
-            loginState.isLoading ||
-            loginState.isWaitingForLogin ||
-            loginState.isSuccess
-          }
-          size="lg"
-          className={`px-8 py-6 text-white font-semibold rounded-full transition-all duration-300 flex items-center gap-2 ${getButtonClass(
-            loginState
-          )}`}
-        >
-          {getButtonContent(loginState)}
-        </Button>
+        <div className="max-w-md w-full mx-auto flex flex-col items-center justify-center text-center ">
+          <h2 className="text-4xl text-left w-full font-semibold tracking-tight mb-4">
+            Discover smarter ways to <br />
+            <span className="bg-gradient-to-t font-instrument text-5xl italic font-light bg-clip-text text-transparent from-orange-500 via-orange-600 to-orange-400">
+              Relive the web.
+            </span>
+          </h2>
+          <p className="text-base w-full text-left text-neutral-700 mb-4 ">
+            Sign in and get started with Discover.wtf to enhance your browsing
+            experience.
+          </p>
+          <Button
+            onClick={handleLogin}
+            disabled={
+              loginState.isLoading ||
+              loginState.isWaitingForLogin ||
+              loginState.isSuccess
+            }
+            size="lg"
+            className={`px-8 py-6 w-full text-white font-semibold rounded-full transition-all duration-300 flex items-center font-inter bg-neutral-100 gap-2 ${getButtonClass(
+              loginState
+            )}`}
+          >
+            {getButtonContent(loginState)}
+          </Button>
+
+          <span className="text-sm font-inter text-neutral-700 mt-3 w-full ">
+            By logging in, you agree to our{" "}
+            <u className="cursor-pointer">Terms</u> and{" "}
+            <u className="cursor-pointer">Privacy Policy</u>.
+          </span>
+        </div>
       )}
     </motion.div>
   );

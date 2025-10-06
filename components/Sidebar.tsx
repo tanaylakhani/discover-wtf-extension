@@ -1,4 +1,4 @@
-import { ChatMessage } from "@/lib/types";
+import { ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import URL from "@/lib/url";
 import {
   capitalizeFirstLetter,
@@ -11,8 +11,12 @@ import {
 import { useChat } from "@ai-sdk/react";
 import { useQuery } from "@tanstack/react-query";
 import { Bookmark, HeartRounded } from "@untitled-ui/icons-react";
-import { DefaultChatTransport, UIMessage } from "ai";
-import { motion } from "framer-motion";
+import {
+  DefaultChatTransport,
+  PrepareSendMessagesRequest,
+  UIMessage,
+} from "ai";
+import { m, motion } from "framer-motion";
 import {
   History,
   Info,
@@ -47,6 +51,8 @@ type SidebarProps = {
   activeLink: PublicRandomLink | null;
   setActiveTab: (tab: keyof typeof tabsIcon) => void;
   pageData: PageData | null;
+  user: TUser | undefined;
+  isUserLoading: boolean;
 };
 
 const Sidebar = ({
@@ -55,10 +61,12 @@ const Sidebar = ({
   setActiveTab,
   activeLink,
   pageData,
+  isUserLoading,
+  user,
 }: SidebarProps) => {
   const [ref, bounds] = useMeasure();
+  const [toolState, setToolState] = useState<CustomUIDataTypes | null>(null);
   const [chatId, setChatId] = useState(uuid());
-
   const [isPrevChat, setIsPrevChat] = useState(false);
   const { data: suggestedPromptsData, isLoading: suggestedPromptsLoading } =
     useQuery({
@@ -78,24 +86,26 @@ const Sidebar = ({
       enabled: !!pageData,
     });
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["get-user"],
-    queryFn: async () => {
-      const resp = await makeCall("/user", {}, 10000);
-      console.log({ data: resp?.data });
-      return resp?.data as TUser;
-    },
-  });
   const suggestedPrompts = suggestedPromptsData || [];
-  const { messages, regenerate, sendMessage, status, setMessages } =
-    useChat<ChatMessage>({
-      id: chatId,
-      transport: new DefaultChatTransport({
+
+  const transport = useCallback(
+    () =>
+      new DefaultChatTransport({
         api: `${URL}/api/chat`,
-        async prepareSendMessagesRequest({ messages }) {
-          if (!data?.id) {
+        prepareSendMessagesRequest: async ({ messages }) => {
+          if (isUserLoading) {
+            throw new Error("User data is still loading. Please wait...");
+          }
+
+          if (!user?.id) {
             throw new Error(
-              "User not loaded yet. Please wait for authentication."
+              "User not authenticated. Please wait for authentication to complete."
+            );
+          }
+
+          if (!activeLink?.id) {
+            throw new Error(
+              "No active link available. Please navigate to a page first."
             );
           }
 
@@ -103,23 +113,57 @@ const Sidebar = ({
           const headers: Record<string, string> = {
             Authorization: `Bearer ${gqlToken}`,
           };
+
+          // console.log(
+          //   "Sending request with userId:",
+          //   user.id,
+          //   "and linkId:",
+          //   activeLink.id
+          // );
+
           return {
             body: {
-              messages,
+              messages: messages,
               ctx: pageData?.content,
               chatId: chatId,
-              userId: data?.id, // Remove optional chaining since we checked above
-              linkId: activeLink?.id,
+              userId: user.id, // Remove optional chaining since we validated above
+              linkId: activeLink.id, // Remove optional chaining since we validated above
             },
             headers,
           };
         },
       }),
+    [activeLink?.id, chatId, user?.id, pageData?.content, isUserLoading]
+  );
+
+  useEffect(() => {
+    setMessages([]);
+  }, [activeLink?.id]);
+
+  const { messages, regenerate, sendMessage, status, setMessages } =
+    useChat<ChatMessage>({
+      id: chatId,
+      transport: transport(),
+      onToolCall: ({ toolCall }) => {
+        console.log({ toolCall });
+      },
+      onData: ({ data, type }) => {
+        if (type === "data-getSimilarLinks") {
+          console.log({ getSimilarLinksData: data });
+          setToolState((prev) => ({
+            ...(prev as CustomUIDataTypes),
+            getSimilarLinks: {
+              ...data,
+            },
+          }));
+        }
+      },
     });
 
   useEffect(() => {
     setMessages([]);
   }, [activeLink?.id]);
+
   const regenerateMessage = async (messageId?: string) => {
     await regenerate({ messageId });
   };
@@ -141,14 +185,14 @@ const Sidebar = ({
       <ThreadsTab
         height={bounds?.height}
         activeLink={activeLink}
-        user={data as TUser}
+        user={user as TUser}
         activeTab={activeTab}
       />
     ),
     ask: (
       <AskTab
         height={bounds?.height}
-        userId={data?.id as string}
+        userId={user?.id as string}
         activeLink={activeLink}
         activeTab={activeTab}
         pageData={pageData as PageData}
@@ -164,9 +208,9 @@ const Sidebar = ({
         status={status}
         sendMessage={sendMessage}
         isSuggestedPromptsLoading={suggestedPromptsLoading}
+        toolState={toolState}
       />
     ),
-    // usage: <>Usage</>,
     info: <InfoTab activeTab={activeTab} />,
   };
 
@@ -193,21 +237,6 @@ const Sidebar = ({
       browser.storage.onChanged.removeListener(listener);
     };
   }, []);
-  const options = [{ icon: HeartRounded }, { icon: Bookmark }];
-
-  // <AnimatePresence>
-  //   {isOpen && (
-  //     <motion.div
-  //       initial={{ x: "100%" }}
-  //       animate={{ x: 0 }}
-  //       exit={{ x: "100%" }}
-  //       style={{
-  //         zIndex: 2147483647,
-  //         right: "0px",
-  //       }}
-  //       transition={{ type: "tween", ease: "easeIn", duration: 0.3 }}
-  //       className="overflow-hidden fixed top-0 bottom-0 h-screen  bg-white border-l shadow-xl rounded-l-xl border-neutral-200 max-w-md w-full flex flex-col "
-  //     >
   return (
     <>
       <div ref={ref} className="w-full  flex  flex-col">
@@ -219,24 +248,12 @@ const Sidebar = ({
             <PanelRight className="size-5 group-hover:stroke-black stroke-neutral-700" />
           </div>
           <div className="flex items-center justify-center">
-            {/* <div className="flex items-center gap-x-4 mr-4 justify-center">
-              {options.map((option, i) => {
-                return (
-                  <>
-                    {option.icon({
-                      className: "size-5 stroke-neutral-700",
-                    })}
-                  </>
-                );
-              })}
-              <div className="border-r border-neutral-200 h-6" />
-            </div> */}
             <AvatarMenu>
-              {isLoading ? (
+              {isUserLoading ? (
                 <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
               ) : (
                 <img
-                  src={data?.profile_image_url!}
+                  src={user?.profile_image_url!}
                   alt="Profile"
                   className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
                 />

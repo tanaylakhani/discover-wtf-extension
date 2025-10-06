@@ -1,6 +1,12 @@
 "use client";
 
-import { Loader2Icon, SendIcon, SquareIcon, XIcon } from "lucide-react";
+import {
+  ArrowUp,
+  Loader2Icon,
+  SendIcon,
+  SquareIcon,
+  XIcon,
+} from "lucide-react";
 import type {
   ComponentProps,
   HTMLAttributes,
@@ -146,7 +152,7 @@ export const PromptInputSubmit = ({
   children,
   ...props
 }: PromptInputSubmitProps) => {
-  let Icon = <SendIcon className="size-4" />;
+  let Icon = <ArrowUp className="size-4" />;
 
   if (status === "submitted") {
     Icon = <Loader2Icon className="size-4 animate-spin" />;

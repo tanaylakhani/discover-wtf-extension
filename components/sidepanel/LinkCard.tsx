@@ -1,8 +1,5 @@
-import { cleanUrl, PublicRandomLink } from "@/lib/utils";
+import { cleanUrl, getFaviconFromDomain, PublicRandomLink } from "@/lib/utils";
 
-export const getFaviconFromDomain = (domain: string) => {
-  return `https://s2.googleusercontent.com/s2/favicons?domain=${domain}`;
-};
 type TLinkCardProps = {
   link: PublicRandomLink;
 };
@@ -10,7 +7,7 @@ const LinkCard = ({ link }: TLinkCardProps) => {
   return (
     <div
       key={link.id}
-      className="flex flex-col mr-3 hover:bg-neutral-50 shadow-md transition-all last:mr-0 bg-white max-w-sm flex-shrink-0 w-full py-4 px-6 h-[180px]  cursor-pointer rounded-2xl border border-neutral-200"
+      className="flex flex-col mr-3 hover:bg-neutral-50 shadow-md transition-all last:mr-0 bg-white max-w-sm flex-shrink-0 w-full py-6 px-6 h-[200px]  cursor-pointer rounded-2xl border border-neutral-200"
     >
       <img
         className="size-6 border border-neutral-200 rounded-full overflow-hidden "

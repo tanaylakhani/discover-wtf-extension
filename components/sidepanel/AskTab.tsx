@@ -1,6 +1,6 @@
 "use client";
 
-import { ChatMessage } from "@/lib/types";
+import { ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import BASE_URL from "@/lib/url";
 import { cn, getGqlToken, PublicRandomLink } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -9,11 +9,6 @@ import { Copy, History, Loader, Loader2, Plus, RefreshCcw } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import useMeasure from "react-use-measure";
 import { v4 as uuid } from "uuid";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-} from "../ai-elements/conversation";
 import { Message, MessageContent } from "../ai-elements/message";
 import { Response } from "../ai-elements/response";
 import { Button } from "../ui/button";
@@ -42,6 +37,7 @@ type AskTabProps = {
   regenerateMessage: (messageId?: string) => void;
   status: ChatStatus;
   sendMessage: ({ text }: { text: string }) => void;
+  toolState: CustomUIDataTypes | null;
 };
 
 type TChat = {
@@ -61,15 +57,6 @@ type TMessage = {
   role: string;
 };
 
-// export type CustomMessage = UIMessage<
-//   never,
-//   {
-//     searchForRelatedLinks: {
-//       links: PublicRandomLink[];
-//     };
-//   }
-// >;
-
 const AskTab = ({
   height,
   suggestedPrompts,
@@ -86,6 +73,7 @@ const AskTab = ({
   setIsPrevChat,
   sendMessage,
   status,
+  toolState,
 }: AskTabProps) => {
   const [ref, bounds] = useMeasure();
   const [input, setInput] = useState("");
@@ -183,10 +171,12 @@ const AskTab = ({
   };
 
   useEffect(() => {
-    if (status === "streaming") {
+    // Scroll to bottom when streaming or when messages change
+    if (status === "streaming" || messages.length > 0) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [status, messages.length]);
+
   const isLoading = status === "streaming";
 
   const handlePromptClick = (prompt: string) => {
@@ -255,140 +245,194 @@ const AskTab = ({
           </Popover>
         </div>
       </div>
-      <Conversation>
-        <ConversationContent style={{ height: scrollAreaHeight }}>
-          {isPrevChat && isLoadingPrevChat ? (
-            <div className="flex justify-center items-center w-full">
-              <Loader className="animate-spin size-6 mt-6" />
-            </div>
-          ) : messages.length === 0 ? (
-            <SuggestedPrompts
-              isSuggestedPromptsLoading={isSuggestedPromptsLoading}
-              handlePromptClick={handlePromptClick}
-              userId={userId}
-              setInput={setInput}
-              suggestedPrompts={suggestedPrompts}
-            />
-          ) : (
-            <div className="flex flex-col space-y-4 py-4 max-w-full">
-              {messages?.map((message) => (
-                <Message className="" from={message?.role} key={message.id}>
-                  <MessageContent
-                    className={cn(
-                      "rounded-xl font-inter",
-                      message?.role === "user"
-                        ? "bg-neutral-100 tracking-tight max-w-[75%] w-fit font-medium text-neutral-700"
-                        : "border-none bg-transparent"
-                    )}
-                  >
-                    {message.role === "assistant" && (
-                      <span className="text-sm text-neutral-600 font-medium flex items-center justify-start  leading-tight mb-2">
-                        Discover.wtf
-                      </span>
-                    )}
-                    {message.parts.map((part, i) => {
-                      switch (part.type) {
-                        case "text":
-                          return (
-                            <React.Fragment key={`${message.id}-${i}`}>
-                              <Response>{part.text}</Response>
-                              {message.role === "assistant" && (
-                                <div className="flex mt-1 items-center justify-end space-x-1">
-                                  <Button
-                                    onClick={async () =>
-                                      navigator.clipboard.writeText(part.text)
-                                    }
-                                    size={"icon"}
-                                    variant={"ghost"}
-                                  >
-                                    <Copy className="size-3" />
-                                  </Button>
-                                  <Button
-                                    onClick={async () =>
-                                      regenerateMessage(message?.id)
-                                    }
-                                    size={"icon"}
-                                    variant={"ghost"}
-                                  >
-                                    <RefreshCcw className="size-3" />
-                                  </Button>
+      {/* <Conversation> */}
+      <div
+        style={{ height: scrollAreaHeight }}
+        className="overflow-y-auto px-2"
+      >
+        {isPrevChat && isLoadingPrevChat ? (
+          <div className="flex justify-center items-center w-full">
+            <Loader className="animate-spin size-6 mt-6" />
+          </div>
+        ) : messages.length === 0 ? (
+          <SuggestedPrompts
+            isSuggestedPromptsLoading={isSuggestedPromptsLoading}
+            handlePromptClick={handlePromptClick}
+            userId={userId}
+            setInput={setInput}
+            suggestedPrompts={suggestedPrompts}
+          />
+        ) : (
+          <div className="flex flex-col space-y-4 py-4 max-w-full">
+            {messages?.map((message) => (
+              <Message className="" from={message?.role} key={message.id}>
+                <MessageContent
+                  className={cn(
+                    "rounded-xl font-inter",
+                    message?.role === "user"
+                      ? "bg-neutral-100 tracking-tight max-w-[75%] w-fit font-medium text-neutral-700"
+                      : "border-none bg-transparent w-full max-w-full"
+                  )}
+                >
+                  {message.role === "assistant" && (
+                    <span className="text-sm text-neutral-600 font-medium flex items-center justify-start  leading-tight mb-2">
+                      Discover.wtf
+                    </span>
+                  )}
+                  {message.parts.map((part, i) => {
+                    switch (part.type) {
+                      case "tool-getSimilarLinks":
+                        const { status, text } =
+                          toolState?.getSimilarLinks || {};
+                        if (part.state !== "output-available") {
+                          switch (status) {
+                            case "fetching":
+                            case "found-n-items":
+                              return (
+                                <div className="flex items-center justify-start">
+                                  <Loader2 className="size-4 text-neutral-700 animate-spin mr-1" />
+                                  <span className="text-sm font-medium ">
+                                    {text}
+                                  </span>
                                 </div>
-                              )}
-                            </React.Fragment>
-                          );
-                      }
-                    })}
-                    {(() => {
-                      const toolParts = message.parts.filter(
-                        (part) => part.type === "data-getSimilarLinks"
-                      );
-                      const latest = toolParts[toolParts.length - 1];
-                      if (!latest) return null;
+                              );
 
-                      const { data } = latest;
+                            case "links-loading":
+                              return (
+                                <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
+                                  {[...Array.from({ length: 4 })].map(
+                                    (_, i) => (
+                                      <div
+                                        key={i}
+                                        className="flex flex-col h-[200px] shadow-md bg-white max-w-xs flex-shrink-0 w-full p-6 mr-3 last:mr-0 rounded-2xl border border-neutral-200"
+                                      >
+                                        <div className="flex w-full items-center justify-center">
+                                          <Skeleton className="animate-none bg-neutral-200 rounded-full aspect-square size-10" />
+                                          <div className="ml-2 flex flex-col w-full pr-4 space-y-1">
+                                            <Skeleton className="animate-none w-1/3 bg-neutral-200 rounded-2xl h-4" />
+                                            <Skeleton className="animate-none w-full bg-neutral-200 rounded-2xl h-4" />
+                                          </div>
+                                        </div>
+                                        <Skeleton className="animate-none w-full bg-neutral-200 mt-2 rounded-2xl h-28" />
+                                      </div>
+                                    )
+                                  )}
+                                </div>
+                              );
+                          }
+                        }
 
-                      switch (data?.status) {
-                        case "fetching":
-                        case "found-n-items":
-                          return (
-                            <div className="flex items-center justify-start">
-                              <Loader2 className="size-4 text-neutral-700 animate-spin mr-1" />
-                              <span className="text-sm font-medium ">
-                                {data.text}
-                              </span>
-                            </div>
-                          );
-
-                        case "links-loading":
-                          return (
+                        return (
+                          <div className=" relative">
                             <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
-                              {[...Array.from({ length: 4 })].map((_, i) => (
-                                <div
-                                  key={i}
-                                  className="flex flex-col h-[180px] shadow-md bg-white max-w-xs flex-shrink-0 w-full py-4 px-6 rounded-2xl border border-neutral-200"
+                              {(part?.output as PublicRandomLink[])?.map(
+                                (link, i) => (
+                                  <LinkCard key={i} link={link} />
+                                )
+                              )}
+                            </div>
+                          </div>
+                        );
+                      case "text":
+                        return (
+                          <React.Fragment key={`${message.id}-${i}`}>
+                            <Response>{part.text}</Response>
+                            {message.role === "assistant" && (
+                              <div className="flex mt-1 items-center justify-end space-x-1">
+                                <Button
+                                  onClick={async () =>
+                                    navigator.clipboard.writeText(part.text)
+                                  }
+                                  size={"icon"}
+                                  variant={"ghost"}
                                 >
-                                  <div className="flex w-full items-center justify-center">
-                                    <Skeleton className="animate-none bg-neutral-200 rounded-full aspect-square size-10" />
-                                    <div className="ml-2 flex flex-col w-full pr-4 space-y-1">
-                                      <Skeleton className="animate-none w-1/3 bg-neutral-200 rounded-2xl h-4" />
-                                      <Skeleton className="animate-none w-full bg-neutral-200 rounded-2xl h-4" />
-                                    </div>
+                                  <Copy className="size-3" />
+                                </Button>
+                                <Button
+                                  onClick={async () =>
+                                    regenerateMessage(message?.id)
+                                  }
+                                  size={"icon"}
+                                  variant={"ghost"}
+                                >
+                                  <RefreshCcw className="size-3" />
+                                </Button>
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                    }
+                  })}
+                  {/* {(() => {
+                    const toolParts = message.parts.filter(
+                      (part) => part.type === "data-getSimilarLinks"
+                    );
+                    const latest = toolParts[toolParts.length - 1];
+                    if (!latest) return null;
+
+                    const { data } = latest;
+
+                    switch (data?.status) {
+                      case "fetching":
+                      case "found-n-items":
+                        return (
+                          <div className="flex items-center justify-start">
+                            <Loader2 className="size-4 text-neutral-700 animate-spin mr-1" />
+                            <span className="text-sm font-medium ">
+                              {data.text}
+                            </span>
+                          </div>
+                        );
+
+                      case "links-loading":
+                        return (
+                          <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
+                            {[...Array.from({ length: 4 })].map((_, i) => (
+                              <div
+                                key={i}
+                                className="flex flex-col h-[200px] shadow-md bg-white max-w-xs flex-shrink-0 w-full p-6 mr-3 last:mr-0 rounded-2xl border border-neutral-200"
+                              >
+                                <div className="flex w-full items-center justify-center">
+                                  <Skeleton className="animate-none bg-neutral-200 rounded-full aspect-square size-10" />
+                                  <div className="ml-2 flex flex-col w-full pr-4 space-y-1">
+                                    <Skeleton className="animate-none w-1/3 bg-neutral-200 rounded-2xl h-4" />
+                                    <Skeleton className="animate-none w-full bg-neutral-200 rounded-2xl h-4" />
                                   </div>
-                                  <Skeleton className="animate-none w-full bg-neutral-200 mt-2 rounded-2xl h-28" />
                                 </div>
+                                <Skeleton className="animate-none w-full bg-neutral-200 mt-2 rounded-2xl h-28" />
+                              </div>
+                            ))}
+                          </div>
+                        );
+
+                      case "complete":
+                        return (
+                          <div className=" relative">
+                            <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
+                              {data.links?.map((link, i) => (
+                                <LinkCard key={i} link={link} />
                               ))}
                             </div>
-                          );
+                          </div>
+                        );
 
-                        case "complete":
-                          return (
-                            <div className=" relative">
-                              <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
-                                {data.links?.map((link, i) => (
-                                  <LinkCard key={i} link={link} />
-                                ))}
-                              </div>
-                            </div>
-                          );
-
-                        default:
-                          return null;
-                      }
-                    })()}
-                    <RelatedQuestions
-                      status={status}
-                      message={message}
-                      sendMessage={(text: string) => sendMessage({ text })}
-                    />
-                  </MessageContent>
-                </Message>
-              ))}
-            </div>
-          )}
-        </ConversationContent>
-        <ConversationScrollButton className="bg-white" />
-      </Conversation>
-
+                      default:
+                        return null;
+                    }
+                  })()} */}
+                  <RelatedQuestions
+                    status={status}
+                    message={message}
+                    sendMessage={(text: string) => sendMessage({ text })}
+                  />
+                </MessageContent>
+              </Message>
+            ))}
+            {status === "streaming" && <div>Thinking...</div>}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
       <div
         ref={ref}
         className="w-full z-10 px-2 pb-2 flex items-center justify-center"

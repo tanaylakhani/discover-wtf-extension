@@ -235,12 +235,13 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
   const viewportRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (viewportRef.current) {
-      viewportRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
+    // Remove the automatic scrolling that might cause layout shift
+    // if (viewportRef.current) {
+    //   viewportRef.current.scrollIntoView({
+    //     behavior: "smooth",
+    //     block: "start",
+    //   });
+    // }
   }, [data?.length]);
 
   return (
@@ -279,30 +280,31 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
 
       <ScrollArea
         style={{ height: scrollAreaHeight }}
-        className=" overflow-y-auto "
+        className="overflow-y-auto"
       >
-        <ScrollAreaPrimitive.Viewport>
-          <div ref={viewportRef} className="mb-10">
+        <ScrollAreaPrimitive.Viewport className="h-full">
+          <div ref={viewportRef} className="min-h-full pb-10">
             {isFetchingComments ? (
-              <LoadingSkeleton />
+              <LoadingSkeleton height={scrollAreaHeight} />
             ) : data!.length === 0 ? (
               <EmptyComments height={scrollAreaHeight} />
             ) : (
-              data!.map((comment, index) => (
-                <CommentCard
-                  sortOption={sortOption}
-                  toReply={toReply}
-                  onReplyClick={setToReply}
-                  comment={comment}
-                  isPending={isPending}
-                  activeLinkId={activeLink?.id as string}
-                  key={comment.id}
-                />
-              ))
+              <div className="space-y-0">
+                {data!.map((comment, index) => (
+                  <CommentCard
+                    sortOption={sortOption}
+                    toReply={toReply}
+                    onReplyClick={setToReply}
+                    comment={comment}
+                    isPending={isPending}
+                    activeLinkId={activeLink?.id as string}
+                    key={comment.id}
+                  />
+                ))}
+              </div>
             )}
           </div>
         </ScrollAreaPrimitive.Viewport>
-        {/* </ScrollAreaPrimitive.Viewport> */}
       </ScrollArea>
       <div
         ref={ref}
@@ -336,9 +338,9 @@ const ThreadsTab: React.FC<ThreadsTabProps> = ({
   );
 };
 
-export const LoadingSkeleton = () => {
+export const LoadingSkeleton = ({ height }: { height: string }) => {
   return (
-    <div className="flex flex-col p-2">
+    <div style={{ height: height }} className="flex flex-col p-2">
       {[...Array.from({ length: 10 })].map((_, index) => (
         <div
           key={index}
