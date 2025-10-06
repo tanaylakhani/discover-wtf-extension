@@ -30,11 +30,22 @@ export function useHistory(activeLink: PublicRandomLink | null) {
       const previous = queryClient.getQueryData<PublicRandomLink[]>([
         "get-history",
       ]);
+
       queryClient.setQueryData<PublicRandomLink[]>(["get-history"], (old) => {
-        if (!old) return [link];
+        // If query is still loading and we don't have data yet, wait for it
+        if (!old && historyQuery.isLoading) {
+          return undefined; // Don't update yet, let the query finish first
+        }
+
+        // If we have no data and query isn't loading, start with empty array
+        const currentData = old || [];
+
         // Only add if not already present
-        if (old.some((item) => item.id === link.id)) return old;
-        return [link, ...old];
+        if (currentData.some((item) => item.id === link.id)) {
+          return currentData;
+        }
+
+        return [link, ...currentData];
       });
       return { previous };
     },
@@ -44,7 +55,10 @@ export function useHistory(activeLink: PublicRandomLink | null) {
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["get-history"] });
+      // Only invalidate if the initial query has completed
+      if (!historyQuery.isLoading) {
+        queryClient.invalidateQueries({ queryKey: ["get-history"] });
+      }
     },
   });
 
@@ -55,21 +69,65 @@ export function useHistory(activeLink: PublicRandomLink | null) {
         const newLink = changes.activeLink.newValue;
         if (newLink && newLink.id !== prevActiveLinkId.current) {
           prevActiveLinkId.current = newLink.id;
-          addToHistory.mutate(newLink);
+
+          // Wait for initial history query to complete before adding optimistically
+          if (!historyQuery.isLoading) {
+            addToHistory.mutate(newLink);
+          } else {
+            // If still loading, defer the mutation until query completes
+            const unsubscribe = queryClient
+              .getQueryCache()
+              .subscribe((event) => {
+                if (
+                  event?.query?.queryKey?.[0] === "get-history" &&
+                  event.type === "updated"
+                ) {
+                  const query = event.query;
+                  if (
+                    query.state.status === "success" ||
+                    query.state.status === "error"
+                  ) {
+                    unsubscribe();
+                    addToHistory.mutate(newLink);
+                  }
+                }
+              });
+          }
         }
       }
     };
     browser.storage.onChanged.addListener(handleStorage);
     return () => browser.storage.onChanged.removeListener(handleStorage);
-  }, [addToHistory]);
+  }, [addToHistory, historyQuery.isLoading, queryClient]);
 
   // Also handle initial mount if activeLink is present
   useEffect(() => {
     if (activeLink && activeLink.id !== prevActiveLinkId.current) {
       prevActiveLinkId.current = activeLink.id;
-      addToHistory.mutate(activeLink);
+
+      // Wait for initial history query to complete before adding optimistically
+      if (!historyQuery.isLoading) {
+        addToHistory.mutate(activeLink);
+      } else {
+        // If still loading, defer the mutation until query completes
+        const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+          if (
+            event?.query?.queryKey?.[0] === "get-history" &&
+            event.type === "updated"
+          ) {
+            const query = event.query;
+            if (
+              query.state.status === "success" ||
+              query.state.status === "error"
+            ) {
+              unsubscribe();
+              addToHistory.mutate(activeLink);
+            }
+          }
+        });
+      }
     }
-  }, [activeLink, addToHistory]);
+  }, [activeLink, addToHistory, historyQuery.isLoading, queryClient]);
 
   return { ...historyQuery, addToHistoryMutation: addToHistory };
 }

@@ -14,6 +14,8 @@ export default defineContentScript({
   runAt: "document_idle", // Changed from document_start to document_idle
 
   async main(ctx) {
+    // Listen for refetch bookmark messages from sidepanel
+
     const waitForBody = () => {
       return new Promise<void>((resolve) => {
         if (document.body) {

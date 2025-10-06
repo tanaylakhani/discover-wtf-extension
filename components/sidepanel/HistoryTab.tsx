@@ -1,4 +1,4 @@
-import { cleanUrl, PublicRandomLink } from "@/lib/utils";
+import { cleanUrl, getFaviconFromDomain, PublicRandomLink } from "@/lib/utils";
 import { ScrollArea } from "../ui/scroll-area";
 import { LoadingSkeleton } from "./ThreadsTab";
 import { Globe, MoreVertical } from "lucide-react";
@@ -19,7 +19,7 @@ const HistoryTab = ({ activeTab, activeLink, height }: HistoryTabProps) => {
       {/* {isLoading && <p>Loading...</p>} */}
       {error && <p>{error?.message}</p>}
       {isLoading ? (
-        <LoadingSkeleton />
+        <LoadingSkeleton height={scrollAreaHeight} />
       ) : (
         <ScrollArea
           style={{
@@ -33,15 +33,15 @@ const HistoryTab = ({ activeTab, activeLink, height }: HistoryTabProps) => {
                 key={item.id}
                 className="px-4 w-full first:mt-3 py-2 z-10 last:mb-24 flex items-center justify-center"
               >
-                {item?.favicon_url ? (
-                  <img
-                    className="aspect-square size-10"
-                    src={item?.favicon_url}
-                    alt=""
-                  />
-                ) : (
+                {/* {item?.favicon_url ? ( */}
+                <img
+                  className="aspect-square size-10"
+                  src={getFaviconFromDomain(item?.domain)}
+                  alt=""
+                />
+                {/* ) : (
                   <Globe strokeWidth={1} className="size-10 " />
-                )}
+                )} */}
 
                 <div className="flex-1 flex flex-col items-start justify-center px-4">
                   <h3 className="text-base line-clamp-1 font-medium tracking-tight leading-tight">

@@ -73,6 +73,21 @@
   .font-inter {
     font-family: "Inter", sans-serif;
   }
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .shimmer {
+    @apply bg-gradient-to-r from-neutral-800 via-neutral-700 to-neutral-800
+           bg-clip-text text-transparent;
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
 }
 
 * {

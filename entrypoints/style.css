@@ -71,11 +71,13 @@
   }
 }
 
-.font-instrument {
-  font-family: "Instrument Serif", serif;
-}
-.font-inter {
-  font-family: "Inter", sans-serif;
+@layer utilities {
+  .font-instrument {
+    font-family: "Instrument Serif", serif;
+  }
+  .font-inter {
+    font-family: "Inter", sans-serif;
+  }
 }
 
 #floater-wrapper {

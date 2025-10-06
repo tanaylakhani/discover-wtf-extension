@@ -1,5 +1,6 @@
 import { PageData } from "@/components/Toolbar";
-import { PublicRandomLink } from "@/lib/utils";
+import { makeCall, PublicRandomLink, TUser } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 import { UIMessage } from "ai";
 import React from "react";
 
@@ -8,6 +9,14 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<keyof typeof tabsIcon>("history");
   const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(null);
   const [pageData, setPageData] = useState<PageData | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["get-user"],
+    queryFn: async () => {
+      const resp = await makeCall("/user", {}, 10000);
+      return resp?.data as TUser;
+    },
+  });
   React.useEffect(() => {
     browser.storage.local
       .get(["activeLink", "activeSidePanelTab", "pageData"])
@@ -50,6 +59,8 @@ const App = () => {
       setMessages={setMessages}
       onClose={() => window.close()}
       pageData={pageData as PageData}
+      isUserLoading={isLoading}
+      user={data}
     />
   );
 };

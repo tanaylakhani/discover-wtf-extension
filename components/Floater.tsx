@@ -1,8 +1,13 @@
 import "@/entrypoints/style.css";
-import { PublicRandomLink } from "@/lib/utils";
+import { cn, PublicRandomLink } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import ToolbarApp from "./Toolbar";
+import { AnimatePresence, motion } from "framer-motion";
+import { X } from "lucide-react";
+import rabbitHoleIcon from "/public/images/rabbithole.gif";
+import spiralIcon from "/public/images/spiral.png";
+
 type FloaterProps = {
   activeLink: PublicRandomLink | null;
   urlVisitCount: number;
@@ -23,7 +28,7 @@ const Floater: React.FC<FloaterProps> = ({
 }) => {
   const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(link);
   const [count, setCount] = useState(urlVisitCount || 0);
-
+  const [inRabbitHole, setIsInRabbitHole] = useState(false);
   const queryClient = useQueryClient();
   const addToHistory = useMutation({
     mutationFn: async () => {
@@ -116,7 +121,94 @@ const Floater: React.FC<FloaterProps> = ({
 
   return (
     <>
-      {" "}
+      <div
+        className={cn(
+          "fixed font-inter top-32 flex flex-col items-end right-0 "
+        )}
+      >
+        <motion.div className="w-fit  flex items-center justify-center">
+          <AnimatePresence>
+            {inRabbitHole && (
+              <motion.div
+                initial={{ opacity: 0, x: "100%" }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: "100%" }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className={
+                  "bg-indigo-700 font-inter text-white h-12 w-full max-w-[240px] px-6  rounded-full flex items-center justify-center "
+                }
+              >
+                <button
+                  onClick={() => setIsInRabbitHole(false)}
+                  className="flex items-center justify-center mx-2"
+                >
+                  <X className="stroke-white size-8" />
+                </button>
+                <img
+                  src={spiralIcon} // force reload by changing URL
+                  alt="Animated"
+                  className="size-8 animate-spin object-cover"
+                />{" "}
+                <div className="flex flex-col mx-3 items-start">
+                  <span className="tracking-tight text-xs font-medium">
+                    In Rabbit Hole:
+                  </span>
+                  <span className="font-semibold tracking-tight">
+                    {activeLink?.domain}
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div
+            id="discover-count"
+            className={cn(
+              "bg-orange-500 w-full font-semibold rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center ",
+              inRabbitHole && "ml-2"
+            )}
+          >
+            <span className="text-white text-sm  mr-1">Discover Count:</span>
+            <span className=" text-sm tracking-tight text-white">{count}</span>
+          </div>
+          {/* </div> */}
+        </motion.div>
+        <motion.div
+          id="source"
+          className={
+            "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[65%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
+          }
+        >
+          <span className="text-neutral-500 text-sm px-4 font-semibold ">
+            Source: "{activeLink?.domain}" from betterstacks
+          </span>
+          <AnimatePresence initial={false}>
+            {!inRabbitHole && (
+              <motion.button
+                initial={{ opacity: 1 }}
+                animate={{ opacity: 1 }}
+                exit={{
+                  opacity: 0,
+                  width: 0,
+                  // margin: 0,
+                  padding: 0,
+                  transition: { duration: 0.3, ease: "easeInOut" },
+                }}
+                className=" size-[10rem] -mr-4 overflow-hidden relative"
+                onClick={() => {
+                  setIsInRabbitHole(true);
+                }}
+              >
+                <img
+                  src={rabbitHoleIcon} // force reload by changing URL
+                  alt="Animated"
+                  className="  object-cover"
+                />
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </div>
       <ToolbarApp activeLink={activeLink} addToHistory={addToHistory} />
     </>
   );
@@ -182,91 +274,4 @@ export default Floater;
 //   >
 //     <Plus className="size-6" />
 //   </motion.button>
-// </div>
-
-// <div className={cn("fixed top-32 flex flex-col items-end right-0 ")}>
-//   <motion.div className="w-fit gap-x-2 flex items-center justify-center">
-//     <AnimatePresence>
-//       {inRabbitHole && (
-//         <motion.div
-//           initial={{ opacity: 0, x: "100%" }}
-//           animate={{ opacity: 1, x: 0 }}
-//           exit={{ opacity: 0, x: "100%" }}
-//           transition={{ duration: 0.3, ease: "easeInOut" }}
-//           className={
-//             "bg-indigo-700 text-white h-12 w-fit px-6  rounded-full flex items-center justify-center "
-//           }
-
-//         >
-//           <button
-//             onClick={() => setIsInRabbitHole(false)}
-//             className="flex items-center justify-center mr-2"
-//           >
-//             <X className="stroke-white size-8" />
-//           </button>
-//           <img
-//             src={spiral} // force reload by changing URL
-//             alt="Animated"
-//             className="size-8  animate-spin  object-cover"
-//           />{" "}
-//           <div className="flex flex-col ml-3 items-start">
-//             <span className="tracking-tight text-xs font-medium">
-//               In Rabbit Hole:
-//             </span>
-//             <span className="font-semibold tracking-tight">
-//               {activeLink?.domain}
-//             </span>
-//           </div>
-//         </motion.div>
-//       )}
-//     </AnimatePresence>
-
-//     <div
-//       id="discover-count"
-//       className="bg-purple-500 w-full rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center "
-//     >
-//       <span className="text-neutral-200 text-sm font-semibold mr-1">
-//         Discover Count:
-//       </span>
-//       <span className="font-semibold text-sm tracking-tight text-white">
-//         {count}
-//       </span>
-//     </div>
-//     {/* </div> */}
-//   </motion.div>
-//   <motion.div
-//     id="source"
-//     className={
-//       "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[65%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
-//     }
-//   >
-//     <span className="text-neutral-500 text-sm px-4 font-semibold ">
-//       Source: "{activeLink?.domain}" from betterstacks
-//     </span>
-//     <AnimatePresence initial={false}>
-//       {!inRabbitHole && (
-//         <motion.button
-//           initial={{ opacity: 1 }}
-//           animate={{ opacity: 1 }}
-//           exit={{
-//             opacity: 0,
-//             width: 0,
-//             // margin: 0,
-//             padding: 0,
-//             transition: { duration: 0.3, ease: "easeInOut" },
-//           }}
-//           className=" size-[10rem] -mr-4 overflow-hidden relative"
-//           onClick={() => {
-//             setIsInRabbitHole(true);
-//           }}
-//         >
-//           <img
-//             src={rabbit} // force reload by changing URL
-//             alt="Animated"
-//             className="  object-cover"
-//           />
-//         </motion.button>
-//       )}
-//     </AnimatePresence>
-//   </motion.div>
 // </div>

@@ -1,26 +1,37 @@
+import { ChatMessage, CustomUIDataTypes } from "@/lib/types";
+import URL from "@/lib/url";
 import {
   capitalizeFirstLetter,
   cn,
+  getGqlToken,
+  makeCall,
   PublicRandomLink,
   TUser,
 } from "@/lib/utils";
+import { useChat } from "@ai-sdk/react";
 import { useQuery } from "@tanstack/react-query";
-import { UIMessage } from "ai";
-import { AnimatePresence, motion } from "framer-motion";
+import { Bookmark, HeartRounded } from "@untitled-ui/icons-react";
+import {
+  DefaultChatTransport,
+  PrepareSendMessagesRequest,
+  UIMessage,
+} from "ai";
+import { m, motion } from "framer-motion";
 import {
   History,
   Info,
   MessageCircle,
-  PanelRightClose,
+  PanelRight,
   Sparkles,
 } from "lucide-react";
-import React from "react";
+import React, { useEffect } from "react";
 import useMeasure from "react-use-measure";
+import { v4 as uuid } from "uuid";
 import AskTab from "./sidepanel/AskTab";
+import AvatarMenu from "./sidepanel/AvatarMenu";
 import HistoryTab from "./sidepanel/HistoryTab";
 import InfoTab from "./sidepanel/InfoTab";
 import ThreadsTab from "./sidepanel/ThreadsTab";
-import { useEffect } from "react";
 import { PageData } from "./Toolbar";
 
 export const tabsIcon = {
@@ -40,6 +51,8 @@ type SidebarProps = {
   activeLink: PublicRandomLink | null;
   setActiveTab: (tab: keyof typeof tabsIcon) => void;
   pageData: PageData | null;
+  user: TUser | undefined;
+  isUserLoading: boolean;
 };
 
 const Sidebar = ({
@@ -48,11 +61,16 @@ const Sidebar = ({
   setActiveTab,
   activeLink,
   pageData,
+  isUserLoading,
+  user,
 }: SidebarProps) => {
   const [ref, bounds] = useMeasure();
+  const [toolState, setToolState] = useState<CustomUIDataTypes | null>(null);
+  const [chatId, setChatId] = useState(uuid());
+  const [isPrevChat, setIsPrevChat] = useState(false);
   const { data: suggestedPromptsData, isLoading: suggestedPromptsLoading } =
     useQuery({
-      queryKey: ["suggested-prompts", pageData],
+      queryKey: ["suggested-prompts", pageData, activeLink?.id],
       queryFn: async () => {
         const resp = await browser.runtime.sendMessage({
           type: "GET_SUGGESTED_PROMPTS",
@@ -68,14 +86,105 @@ const Sidebar = ({
       enabled: !!pageData,
     });
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["get-user"],
-    queryFn: async () => {
-      const resp = await browser.runtime.sendMessage({ type: "GET_USER" });
-      return resp?.data as TUser;
-    },
-  });
   const suggestedPrompts = suggestedPromptsData || [];
+
+  const transport = useCallback(
+    () =>
+      new DefaultChatTransport({
+        api: `${URL}/api/chat`,
+        prepareSendMessagesRequest: async ({ messages }) => {
+          console.log("prepareSendMessagesRequest called with:", {
+            messagesCount: messages.length,
+            isUserLoading,
+            userId: user?.id,
+            activeLink: activeLink?.id,
+            chatId,
+          });
+
+          if (isUserLoading) {
+            console.error("User still loading");
+            throw new Error("User data is still loading. Please wait...");
+          }
+
+          if (!user?.id) {
+            console.error("No user ID");
+            throw new Error(
+              "User not authenticated. Please wait for authentication to complete."
+            );
+          }
+
+          if (!activeLink?.id) {
+            console.error("No active link");
+            throw new Error(
+              "No active link available. Please navigate to a page first."
+            );
+          }
+
+          const gqlToken = await getGqlToken();
+          const headers: Record<string, string> = {
+            Authorization: `Bearer ${gqlToken}`,
+          };
+
+          // console.log(
+          //   "Sending request with userId:",
+          //   user.id,
+          //   "and linkId:",
+          //   activeLink.id
+          // );
+
+          return {
+            body: {
+              messages: messages,
+              ctx: pageData?.content,
+              chatId: chatId,
+              userId: user.id, // Remove optional chaining since we validated above
+              linkId: activeLink.id, // Remove optional chaining since we validated above
+            },
+            headers,
+          };
+        },
+      }),
+    [activeLink?.id, chatId, user?.id, pageData?.content, isUserLoading]
+  );
+
+  const { messages, regenerate, sendMessage, status, setMessages } =
+    useChat<ChatMessage>({
+      id: chatId,
+      transport: transport(),
+      onData: ({ data, type }) => {
+        if (type === "data-getSimilarLinks") {
+          console.log({ getSimilarLinksData: data });
+          setToolState((prev) => ({
+            ...(prev as CustomUIDataTypes),
+            getSimilarLinks: {
+              ...data,
+            },
+          }));
+        }
+      },
+    });
+
+  useEffect(() => {
+    setMessages([]);
+  }, [activeLink?.id]);
+
+  // Reset chat state when activeLink changes to ensure fresh start
+  useEffect(() => {
+    if (activeLink?.id) {
+      const newChatId = uuid();
+      setChatId(newChatId);
+      setIsPrevChat(false);
+    }
+  }, [activeLink?.id]);
+
+  const regenerateMessage = async (messageId?: string) => {
+    await regenerate({ messageId });
+  };
+
+  const handleHistoryClick = (chatId: string) => {
+    setIsPrevChat(true);
+    setChatId(chatId);
+  };
 
   const tabs = {
     history: (
@@ -89,22 +198,32 @@ const Sidebar = ({
       <ThreadsTab
         height={bounds?.height}
         activeLink={activeLink}
-        user={data as TUser}
+        user={user as TUser}
         activeTab={activeTab}
       />
     ),
     ask: (
       <AskTab
         height={bounds?.height}
-        user={data as TUser}
+        userId={user?.id as string}
         activeLink={activeLink}
         activeTab={activeTab}
         pageData={pageData as PageData}
         suggestedPrompts={suggestedPrompts}
+        messages={messages}
+        setMessages={setMessages}
+        chatId={chatId}
+        setChatId={setChatId}
+        handleHistoryClick={handleHistoryClick}
+        isPrevChat={isPrevChat}
+        setIsPrevChat={setIsPrevChat}
+        regenerateMessage={regenerateMessage}
+        status={status}
+        sendMessage={sendMessage}
         isSuggestedPromptsLoading={suggestedPromptsLoading}
+        toolState={toolState}
       />
     ),
-    // usage: <>Usage</>,
     info: <InfoTab activeTab={activeTab} />,
   };
 
@@ -131,39 +250,29 @@ const Sidebar = ({
       browser.storage.onChanged.removeListener(listener);
     };
   }, []);
-
-  // <AnimatePresence>
-  //   {isOpen && (
-  //     <motion.div
-  //       initial={{ x: "100%" }}
-  //       animate={{ x: 0 }}
-  //       exit={{ x: "100%" }}
-  //       style={{
-  //         zIndex: 2147483647,
-  //         right: "0px",
-  //       }}
-  //       transition={{ type: "tween", ease: "easeIn", duration: 0.3 }}
-  //       className="overflow-hidden fixed top-0 bottom-0 h-screen  bg-white border-l shadow-xl rounded-l-xl border-neutral-200 max-w-md w-full flex flex-col "
-  //     >
   return (
     <>
-      <div ref={ref} className="w-full  flex flex-col">
+      <div ref={ref} className="w-full  flex  flex-col">
         <div className="w-full flex px-6 pt-3 py-1 items-center justify-between">
           <div
             onClick={() => onClose()}
             className="group group:bg-neutral-100 rounded-lg flex items-center justify-center"
           >
-            <PanelRightClose className="size-5 group-hover:stroke-black stroke-neutral-700" />
+            <PanelRight className="size-5 group-hover:stroke-black stroke-neutral-700" />
           </div>
-          {isLoading ? (
-            <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
-          ) : (
-            <img
-              src={data?.profile_image_url!}
-              alt="Profile"
-              className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
-            />
-          )}
+          <div className="flex items-center justify-center">
+            <AvatarMenu>
+              {isUserLoading ? (
+                <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
+              ) : (
+                <img
+                  src={user?.profile_image_url!}
+                  alt="Profile"
+                  className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
+                />
+              )}
+            </AvatarMenu>
+          </div>
         </div>
         <div className="px-2 w-full flex flex-row mt-2 items-center justify-center  border-b border-neutral-200 ">
           {Object.keys(tabs).map((tab) => {

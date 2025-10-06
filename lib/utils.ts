@@ -5,6 +5,9 @@ import queryClient from "./query-client";
 import BaseURL from "./url";
 
 let urls: string[] = [...links];
+export const getFaviconFromDomain = (domain: string) => {
+  return `https://s2.googleusercontent.com/s2/favicons?domain=${domain}`;
+};
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

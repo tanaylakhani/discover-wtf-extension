@@ -1,16 +1,10 @@
 "use client";
 
-import {
-  PromptInput,
-  PromptInputAction,
-  PromptInputActions,
-  PromptInputTextarea,
-} from "@/components/ui/prompt-input";
 import { Button } from "@/components/ui/button";
-import { ArrowUp, Paperclip, Plus, Square, X } from "lucide-react";
-import { useRef, useState } from "react";
-import TextArea from "react-textarea-autosize";
 import { cn } from "@/lib/utils";
+import { ArrowUp, Plus, X } from "lucide-react";
+import { useRef } from "react";
+import TextArea from "react-textarea-autosize";
 type TChatBoxProps = {
   onSubmit: (message: string, files: File[]) => void;
   input: string;
