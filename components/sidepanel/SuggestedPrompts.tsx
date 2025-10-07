@@ -1,11 +1,11 @@
-import { cn } from "@/lib/utils";
-import { Lightbulb } from "lucide-react";
+import { cn, TUser } from "@/lib/utils";
+import { CornerDownRight, Lightbulb } from "lucide-react";
 import { Skeleton } from "../ui/skeleton";
 
 type SuggestedPromptsProps = {
   suggestedPrompts: string[];
   isSuggestedPromptsLoading: boolean;
-  userId: string | null;
+  user: TUser | null;
   setInput: (text: string) => void;
   handlePromptClick: (prompt: string) => void;
 };
@@ -13,27 +13,31 @@ type SuggestedPromptsProps = {
 const SuggestedPrompts = ({
   suggestedPrompts,
   isSuggestedPromptsLoading,
-  userId,
+  user,
   handlePromptClick,
 }: SuggestedPromptsProps) => {
   return (
-    <div className="mx-auto  font-inter px-4 flex w-full flex-col items-center justify-end mb-6 pt-10">
+    <div className="mx-auto  font-inter px-4 flex w-full flex-col items-center justify-center mb-6 pt-10">
       <div className="flex items-center justify-start w-full">
-        <div className="flex-1 flex flex-col ml-4">
+        <div className="flex-1 flex flex-col ">
           <span className="text-sm text-neutral-600 font-medium leading-tight mb-2">
             Discover.wtf
           </span>
           <span className="font-medium text-neutral-900 text-sm leading-tight">
-            {!userId
-              ? "Loading user authentication..."
-              : "Welcome to Discover.wtf! Here are some suggestions to get started."}
+            Welcome to Discover.wtf! Here are some suggestions to get started.
           </span>
-          <div className="mt-4 mb-4 grid sm:grid-cols-2 grid-cols-1 gap-3 w-full">
-            {isSuggestedPromptsLoading || !userId
+          {/* <h2 className="text-2xl font-medium">
+            Hi {user?.name?.split(" ")[0] || "there"}
+          </h2>
+          <h3 className="text-2xl text-neutral-500 font-medium">
+            How can I assist you today?
+          </h3> */}
+          <div className="mt-4 mb-4 grid sm:grid-cols-2 grid-cols-1 w-full">
+            {isSuggestedPromptsLoading || !user?.id
               ? [...Array(4)].map((_, i) => (
                   <Skeleton
                     key={i}
-                    className="w-full bg-neutral-200 rounded-xl h-14 "
+                    className="w-full bg-neutral-200 rounded-xl h-12 mt-2 first:mt-0 "
                   />
                 ))
               : suggestedPrompts.map((prompt, i) => (
@@ -41,12 +45,14 @@ const SuggestedPrompts = ({
                     key={i}
                     onClick={() => handlePromptClick(prompt)}
                     className={cn(
-                      "bg-white z-[2] py-2 px-4 cursor-pointer rounded-lg border border-neutral-200 flex items-start justify-start font-medium text-sm text-neutral-800",
-                      !userId && "cursor-not-allowed opacity-50"
+                      "w-full h-12 cursor-pointer p-2 flex items-center justify-between border border-neutral-200/60 text-neutral-700 hover:text-black rounded-xl hover:bg-neutral-50 transition-all mt-2 first:mt-0",
+                      !user?.id && "cursor-not-allowed opacity-80"
                     )}
                   >
-                    <Lightbulb className="size-5 mr-2 stroke-orange-500 fill-orange-500" />
-                    {prompt}
+                    <CornerDownRight className="size-3 ml-2 stroke-neutral-900 " />
+                    <span className="tracking-tight line-clamp-1 truncate flex-1 ml-2 text-sm ">
+                      {prompt}
+                    </span>
                   </div>
                 ))}
           </div>

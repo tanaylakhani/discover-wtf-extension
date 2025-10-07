@@ -185,7 +185,7 @@ const Sidebar = ({
     setIsPrevChat(true);
     setChatId(chatId);
   };
-
+  console.log({ messages });
   const tabs = {
     history: (
       <HistoryTab
@@ -205,7 +205,7 @@ const Sidebar = ({
     ask: (
       <AskTab
         height={bounds?.height}
-        userId={user?.id as string}
+        user={user as TUser}
         activeLink={activeLink}
         activeTab={activeTab}
         pageData={pageData as PageData}
