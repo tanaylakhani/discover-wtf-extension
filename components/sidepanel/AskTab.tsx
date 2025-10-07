@@ -2,7 +2,7 @@
 
 import { ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import BASE_URL from "@/lib/url";
-import { cn, getGqlToken, PublicRandomLink } from "@/lib/utils";
+import { cn, getGqlToken, PublicRandomLink, TUser } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { ChatStatus } from "ai";
 import { Copy, History, Loader, Loader2, Plus, RefreshCcw } from "lucide-react";
@@ -22,7 +22,7 @@ import SuggestedPrompts from "./SuggestedPrompts";
 type AskTabProps = {
   activeTab: string;
   activeLink: PublicRandomLink | null;
-  userId: string;
+  user: TUser | null;
   height: number;
   pageData: PageData;
   suggestedPrompts: string[];
@@ -61,7 +61,7 @@ const AskTab = ({
   height,
   suggestedPrompts,
   isSuggestedPromptsLoading,
-  userId,
+  user,
   activeLink,
   messages,
   setMessages,
@@ -150,7 +150,7 @@ const AskTab = ({
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!userId) {
+    if (!user?.id) {
       console.warn("Cannot send message: User not loaded yet");
       return;
     }
@@ -192,7 +192,7 @@ const AskTab = ({
 
     // Debug logging
     console.log("Prompt clicked:", prompt);
-    console.log("User ID:", userId);
+    console.log("User ID:", user?.id);
     console.log("Chat ID:", chatId);
     console.log("Status:", status);
 
@@ -274,7 +274,7 @@ const AskTab = ({
           <SuggestedPrompts
             isSuggestedPromptsLoading={isSuggestedPromptsLoading}
             handlePromptClick={handlePromptClick}
-            userId={userId}
+            user={user}
             setInput={setInput}
             suggestedPrompts={suggestedPrompts}
           />
@@ -353,107 +353,57 @@ const AskTab = ({
                         return (
                           <React.Fragment key={`${message.id}-${i}`}>
                             <Response>{part.text}</Response>
-                            {message.role === "assistant" && (
-                              <div className="flex mt-1 items-center justify-end space-x-1">
-                                <Button
-                                  onClick={async () =>
-                                    navigator.clipboard.writeText(part.text)
-                                  }
-                                  size={"icon"}
-                                  variant={"ghost"}
-                                >
-                                  <Copy className="size-3" />
-                                </Button>
-                                <Button
-                                  onClick={async () =>
-                                    regenerateMessage(message?.id)
-                                  }
-                                  size={"icon"}
-                                  variant={"ghost"}
-                                >
-                                  <RefreshCcw className="size-3" />
-                                </Button>
-                              </div>
-                            )}
                           </React.Fragment>
                         );
                     }
                   })}
-                  {/* {(() => {
-                    const toolParts = message.parts.filter(
-                      (part) => part.type === "data-getSimilarLinks"
-                    );
-                    const latest = toolParts[toolParts.length - 1];
-                    if (!latest) return null;
 
-                    const { data } = latest;
+                  {message.role === "assistant" && (
+                    <div className="flex mt-1 items-center justify-start gap-x-1">
+                      <Button
+                        onClick={async () =>
+                          navigator.clipboard.writeText(
+                            message.parts
+                              .map((part) =>
+                                part.type === "text" ? part.text : ""
+                              )
+                              .join("\n") as string
+                          )
+                        }
+                        size={"icon"}
+                        variant={"ghost"}
+                      >
+                        <Copy className="size-3" />
+                      </Button>
+                      <Button
+                        onClick={async () => regenerateMessage(message?.id)}
+                        size={"icon"}
+                        variant={"ghost"}
+                      >
+                        <RefreshCcw className="size-3" />
+                      </Button>
+                    </div>
+                  )}
 
-                    switch (data?.status) {
-                      case "fetching":
-                      case "found-n-items":
-                        return (
-                          <div className="flex items-center justify-start">
-                            <Loader2 className="size-4 text-neutral-700 animate-spin mr-1" />
-                            <span className="text-sm font-medium ">
-                              {data.text}
-                            </span>
-                          </div>
-                        );
-
-                      case "links-loading":
-                        return (
-                          <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
-                            {[...Array.from({ length: 4 })].map((_, i) => (
-                              <div
-                                key={i}
-                                className="flex flex-col h-[200px] shadow-md bg-white max-w-xs flex-shrink-0 w-full p-6 mr-3 last:mr-0 rounded-2xl border border-neutral-200"
-                              >
-                                <div className="flex w-full items-center justify-center">
-                                  <Skeleton className="animate-none bg-neutral-200 rounded-full aspect-square size-10" />
-                                  <div className="ml-2 flex flex-col w-full pr-4 space-y-1">
-                                    <Skeleton className="animate-none w-1/3 bg-neutral-200 rounded-2xl h-4" />
-                                    <Skeleton className="animate-none w-full bg-neutral-200 rounded-2xl h-4" />
-                                  </div>
-                                </div>
-                                <Skeleton className="animate-none w-full bg-neutral-200 mt-2 rounded-2xl h-28" />
-                              </div>
-                            ))}
-                          </div>
-                        );
-
-                      case "complete":
-                        return (
-                          <div className=" relative">
-                            <div className="w-full overflow-x-auto py-2 flex items-center justify-start">
-                              {data.links?.map((link, i) => (
-                                <LinkCard key={i} link={link} />
-                              ))}
-                            </div>
-                          </div>
-                        );
-
-                      default:
-                        return null;
-                    }
-                  })()} */}
                   <RelatedQuestions
                     status={status}
                     message={message}
+                    setIsSubmitting={setIsSubmitting}
                     sendMessage={(text: string) => sendMessage({ text })}
                   />
                 </MessageContent>
               </Message>
             ))}
             {isSubmitting && (
-              <div className="w-full px-4 flex flex-col">
+              <div className="w-full px-4 items-center justify-center flex flex-col">
                 {[...Array(3)].map((_, i) => (
                   <Skeleton
-                    className="h-6 w-full mt-2 rounded-xl bg-neutral-200 animate-pulse"
+                    className="h-8 w-full mt-2 rounded-md bg-neutral-200 animate-pulse"
                     key={i}
                   />
                 ))}
                 <Skeleton
-                  className="h-20 w-full mt-2 rounded-xl bg-neutral-200 animate-pulse"
+                  className="h-24 w-full mt-2 rounded-md bg-neutral-200 animate-pulse"
                   // key={3}
                 />
               </div>
@@ -464,14 +414,14 @@ const AskTab = ({
       </div>
       <div
         ref={ref}
-        className="w-full z-10 px-2 pb-2 flex items-center justify-center"
+        className="w-full z-10 px-3 pb-3 flex items-center justify-center"
       >
         <AskChatBox
           handleSubmit={handleSubmit}
           input={input}
           setInput={setInput}
           isLoading={isLoading}
-          userId={userId}
+          userId={user?.id as string}
           status={status}
         />
       </div>

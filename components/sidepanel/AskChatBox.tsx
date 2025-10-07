@@ -1,17 +1,15 @@
-import { FormEventHandler } from "react";
+import { getFaviconFromDomain } from "@/lib/utils";
+import { AtSign, Attachment01 } from "@untitled-ui/icons-react";
+import { ChatStatus } from "ai";
+import { AnimatePresence, motion } from "framer-motion";
+import { FormEventHandler, useEffect, useState } from "react";
 import {
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
 } from "../ai-elements/prompt-input";
-import { ChatStatus } from "ai";
 import { Button } from "../ui/button";
-import { AtSign, Attachment01 } from "@untitled-ui/icons-react";
-import { AnimatePresence, motion } from "framer-motion";
-import { cn, getFaviconFromDomain } from "@/lib/utils";
-import useMeasure from "react-use-measure";
-import { useEffect, useState } from "react";
 import { Skeleton } from "../ui/skeleton";
 
 type AskChatBoxProps = {
@@ -31,8 +29,7 @@ const AskChatBox = ({
   userId,
   status,
 }: AskChatBoxProps) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  // const [ref, bounds] = useMeasure();
+  const [isMenuOpen, setIsMenuOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<Browser.tabs.Tab>();
   const [isTabLoading, setIsTabLoading] = useState(false);
   useEffect(() => {
@@ -123,7 +120,7 @@ const AskChatBox = ({
         )}
       </AnimatePresence>
       <PromptInput
-        className="bg-white rounded-2xl border-neutral-300"
+        className="bg-white rounded-2xl border-neutral-200/50"
         onSubmit={handleSubmit}
       >
         <PromptInputTextarea

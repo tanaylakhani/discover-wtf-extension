@@ -28,7 +28,7 @@ const Floater: React.FC<FloaterProps> = ({
 }) => {
   const [activeLink, setActiveLink] = useState<PublicRandomLink | null>(link);
   const [count, setCount] = useState(urlVisitCount || 0);
-  const [inRabbitHole, setIsInRabbitHole] = useState(false);
+  const [showSource, setShowSource] = useState(true);
   const queryClient = useQueryClient();
   const addToHistory = useMutation({
     mutationFn: async () => {
@@ -102,6 +102,30 @@ const Floater: React.FC<FloaterProps> = ({
   });
 
   useEffect(() => {
+    const handleLoad = () => {
+      const timer = setTimeout(() => {
+        setShowSource(false);
+      }, 10000);
+
+      // cleanup timer when component unmounts
+      return () => clearTimeout(timer);
+    };
+
+    // if document already loaded, run immediately
+    if (document.readyState === "complete") {
+      handleLoad();
+    } else {
+      // wait until document finishes loading
+      window.addEventListener("load", handleLoad);
+      return () => window.removeEventListener("load", handleLoad);
+    }
+  }, []);
+
+  const handleHideSource = () => {
+    setShowSource(false);
+  };
+
+  useEffect(() => {
     const listener = (
       changes: { [key: string]: globalThis.Browser.storage.StorageChange },
       areaName: globalThis.Browser.storage.AreaName
@@ -112,7 +136,6 @@ const Floater: React.FC<FloaterProps> = ({
           setActiveLink(changes?.activeLink?.newValue);
         }
     };
-
     browser.storage.onChanged.addListener(listener);
     return () => {
       browser.storage.onChanged.removeListener(listener);
@@ -123,91 +146,57 @@ const Floater: React.FC<FloaterProps> = ({
     <>
       <div
         className={cn(
-          "fixed font-inter top-32 flex flex-col items-end right-0 "
+          "fixed font-inter group top-32 flex flex-col items-end right-0 "
         )}
       >
-        <motion.div className="w-fit  flex items-center justify-center">
-          <AnimatePresence>
-            {inRabbitHole && (
-              <motion.div
-                initial={{ opacity: 0, x: "100%" }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: "100%" }}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
-                className={
-                  "bg-indigo-700 font-inter text-white h-12 w-full max-w-[240px] px-6  rounded-full flex items-center justify-center "
-                }
-              >
-                <button
-                  onClick={() => setIsInRabbitHole(false)}
-                  className="flex items-center justify-center mx-2"
-                >
-                  <X className="stroke-white size-8" />
-                </button>
-                <img
-                  src={spiralIcon} // force reload by changing URL
-                  alt="Animated"
-                  className="size-8 animate-spin object-cover"
-                />{" "}
-                <div className="flex flex-col mx-3 items-start">
-                  <span className="tracking-tight text-xs font-medium">
-                    In Rabbit Hole:
-                  </span>
-                  <span className="font-semibold tracking-tight">
-                    {activeLink?.domain}
-                  </span>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
+        <motion.div className="w-fit cursor-pointer flex items-center justify-center">
           <div
             id="discover-count"
             className={cn(
-              "bg-orange-500 w-full font-semibold rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center ",
-              inRabbitHole && "ml-2"
+              "bg-orange-500 w-full font-semibold rounded-l-full h-12 pl-6 pr-4 flex items-center justify-center "
+              // inRabbitHole && "ml-2"
             )}
           >
-            <span className="text-white text-sm  mr-1">Discover Count:</span>
-            <span className=" text-sm tracking-tight text-white">{count}</span>
+            <span className="text-white/95 text-sm ">Discover Count.</span>
+            <span className=" text-sm ml-0.5 tracking-tight font-inter text-white">
+              {count}
+            </span>
           </div>
           {/* </div> */}
         </motion.div>
-        <motion.div
-          id="source"
-          className={
-            "bg-white hover:-translate-x-0 transition-all duration-75 ease-linear translate-x-[65%] border cursor-pointer border-neutral-200 shadow-lg mt-2 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
-          }
-        >
-          <span className="text-neutral-500 text-sm px-4 font-semibold ">
-            Source: "{activeLink?.domain}" from betterstacks
-          </span>
-          <AnimatePresence initial={false}>
-            {!inRabbitHole && (
-              <motion.button
-                initial={{ opacity: 1 }}
-                animate={{ opacity: 1 }}
-                exit={{
-                  opacity: 0,
-                  width: 0,
-                  // margin: 0,
-                  padding: 0,
-                  transition: { duration: 0.3, ease: "easeInOut" },
-                }}
-                className=" size-[10rem] -mr-4 overflow-hidden relative"
-                onClick={() => {
-                  setIsInRabbitHole(true);
-                }}
-              >
+        <AnimatePresence>
+          {showSource && (
+            <motion.div
+              initial={{ opacity: 0, x: "100%" }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: "100%" }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              id="source"
+              className={
+                "bg-white transition-all duration-75 ease-linear mr-3 border cursor-pointer border-neutral-200 shadow-lg mt-4 h-12 rounded-full flex items-center justify-center  relative overflow-hidden"
+              }
+            >
+              <span className="text-neutral-500 text-sm px-4 font-semibold ">
+                Source: "{activeLink?.domain}" from betterstacks
+              </span>
+              <div className=" size-[10rem] -mr-4 overflow-hidden relative">
                 <img
                   src={rabbitHoleIcon} // force reload by changing URL
                   alt="Animated"
                   className="  object-cover"
                 />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </motion.div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {showSource && (
+          <button
+            onClick={handleHideSource}
+            className="border mt-2 mr-2 group-hover:opacity-100 opacity-0 cursor-pointer transition-all duration-75 -translate-x-4 border-neutral-200 bg-white p-1 rounded-full"
+          >
+            <X className="size-3" />
+          </button>
+        )}
       </div>
       <ToolbarApp activeLink={activeLink} addToHistory={addToHistory} />
     </>

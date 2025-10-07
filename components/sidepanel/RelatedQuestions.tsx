@@ -1,4 +1,4 @@
-import { Lightbulb } from "lucide-react";
+import { CornerDownRight, Lightbulb } from "lucide-react";
 import { Skeleton } from "../ui/skeleton";
 import { ChatMessage } from "@/lib/types";
 import { ChatStatus } from "ai";
@@ -7,10 +7,12 @@ const RelatedQuestions = ({
   message,
   sendMessage,
   status,
+  setIsSubmitting,
 }: {
   message: ChatMessage;
   status: ChatStatus;
   sendMessage: (text: string) => void;
+  setIsSubmitting: (isSubmitting: boolean) => void;
 }) => {
   const toolParts = message.parts.filter(
     (part) => part.type === "data-getRelatedQuestions"
@@ -46,11 +48,12 @@ const RelatedQuestions = ({
                 key={i}
                 onClick={() => {
                   if (status === "streaming") return;
+                  setIsSubmitting(true);
                   sendMessage(prompt);
                 }}
                 className="w-full h-12 cursor-pointer p-2 flex items-center justify-between border border-neutral-200/60 text-neutral-700 hover:text-black rounded-xl hover:bg-neutral-50 transition-all"
               >
-                <Lightbulb className="size-5 ml-2 stroke-orange-500 fill-orange-500" />
+                <CornerDownRight className="size-3 ml-2 stroke-neutral-900 " />
                 <span className="tracking-tight line-clamp-1 truncate flex-1 ml-2 text-sm ">
                   {prompt}
                 </span>
