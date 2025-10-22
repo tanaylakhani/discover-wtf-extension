@@ -265,16 +265,16 @@ const Sidebar = ({
               {isUserLoading ? (
                 <div className="size-8 rounded-full animate-pulse bg-neutral-200" />
               ) : (
-                <img
-                  src={user?.profile_image_url!}
-                  alt="Profile"
-                  className="w-8 h-8 rounded-full border border-neutral-200 object-cover"
-                />
+                <div className="w-8 h-8 rounded-full border border-neutral-200 bg-neutral-200 flex items-center justify-center">
+                  <span className="text-neutral-800 text-sm font-medium">
+                    {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?'}
+                  </span>
+                </div>
               )}
             </AvatarMenu>
           </div>
         </div>
-        <div className="px-2 w-full flex flex-row mt-2 items-center justify-center  border-b border-neutral-200 ">
+        <div className="px-2 w-full flex flex-row mt-2 items-center overflow-x-auto border-b border-neutral-200 [&::-webkit-scrollbar]:hidden">
           {Object.keys(tabs).map((tab) => {
             const icon = tabsIcon[tab as keyof typeof tabsIcon];
             return (

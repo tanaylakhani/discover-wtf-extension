@@ -31,23 +31,27 @@ const HistoryTab = ({ activeTab, activeLink, height }: HistoryTabProps) => {
             {data!.map((item) => (
               <div
                 key={item.id}
-                className="px-4 w-full first:mt-3 py-2 z-10 last:mb-24 flex items-center justify-center"
+                className="px-4 w-full first:mt-3 py-2 z-10 last:mb-24 flex items-center justify-between"
               >
                 {/* {item?.favicon_url ? ( */}
                 <img
-                  className="aspect-square size-10"
+                  className="aspect-square size-10 rounded"
                   src={getFaviconFromDomain(item?.domain)}
                   alt=""
+                  onError={(e) => {
+                    e.currentTarget.onerror = null; // Prevent infinite loop
+                    e.currentTarget.src = `https://icons.duckduckgo.com/ip3/${item?.domain}.ico`;
+                  }}
                 />
                 {/* ) : (
                   <Globe strokeWidth={1} className="size-10 " />
                 )} */}
 
-                <div className="flex-1 flex flex-col items-start justify-center px-4">
+                <div className="flex-1 min-w-0 flex flex-col items-start justify-center px-4">
                   <h3 className="text-base line-clamp-1 font-medium tracking-tight leading-tight">
                     {item.title}
                   </h3>
-                  <div className="text-sm w-[300px] truncate text-neutral-600">
+                  <div className="text-sm w-full truncate text-neutral-600">
                     {cleanUrl(item?.target_url)}
                   </div>
                 </div>
