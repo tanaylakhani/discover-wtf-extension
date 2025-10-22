@@ -6,7 +6,13 @@ import BaseURL from "./url";
 
 let urls: string[] = [...links];
 export const getFaviconFromDomain = (domain: string) => {
-  return `https://s2.googleusercontent.com/s2/favicons?domain=${domain}`;
+  const cleanDomain = domain
+    .replace(/^(https?:\/\/)?(www\.)?/, '')
+    .split('/')[0]
+    .toLowerCase()
+    .trim();
+  
+  return `https://logo.clearbit.com/${cleanDomain}`;
 };
 
 export function cn(...inputs: ClassValue[]) {

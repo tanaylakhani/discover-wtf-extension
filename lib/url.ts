@@ -1,3 +1,3 @@
-const URL = "http://localhost:3001";
+const URL = "https://www.discover.wtf";
 
 export default URL;
